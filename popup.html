@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;600&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 340px;
+      min-height: 180px;
+      background: #0a0a0f;
+      color: white;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+    }
+    .header {
+      padding: 16px 16px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .logo-text {
+      font-family: 'Unbounded', system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: -0.01em;
+      color: rgba(255,255,255,0.9);
+    }
+    .logo-text span { color: #34d399; font-weight: 600; }
+    .status-badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 6px;
+      letter-spacing: 0.02em;
+    }
+    .status-badge.active {
+      background: rgba(52,211,153,0.12);
+      color: #34d399;
+    }
+    .status-badge.inactive {
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.25);
+    }
+
+    .content { padding: 0 16px 16px; }
+
+    .empty-state {
+      text-align: center;
+      padding: 28px 16px 20px;
+    }
+    .empty-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 14px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.03);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .empty-state p {
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.3);
+    }
+
+    .video-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .video-item:hover {
+      background: rgba(52,211,153,0.06);
+      border-color: rgba(52,211,153,0.2);
+    }
+    .video-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      background: rgba(52,211,153,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .video-icon svg { width: 16px; height: 16px; color: #34d399; }
+    .video-info { flex: 1; min-width: 0; }
+    .video-info .id {
+      font-size: 12px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.75);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .video-info .time {
+      font-size: 11px;
+      color: rgba(255,255,255,0.25);
+      margin-top: 2px;
+    }
+    .video-action {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.15);
+      white-space: nowrap;
+      transition: color 0.15s;
+    }
+    .video-item:hover .video-action { color: #34d399; }
+
+    .footer {
+      padding: 10px 16px 12px;
+    }
+    .app-url-toggle {
+      font-size: 11px;
+      color: rgba(255,255,255,0.15);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      transition: color 0.15s;
+      user-select: none;
+    }
+    .app-url-toggle:hover { color: rgba(255,255,255,0.35); }
+    .app-url-toggle svg {
+      width: 12px; height: 12px;
+      transition: transform 0.2s;
+    }
+    .app-url-toggle.open svg { transform: rotate(90deg); }
+    .app-url-row, .settings-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .app-url-row.visible, .settings-row.visible { display: flex; }
+    .settings-row label {
+      font-size: 11px;
+      color: rgba(255,255,255,0.35);
+      white-space: nowrap;
+    }
+    .settings-row select {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: rgba(255,255,255,0.6);
+      font-size: 11px;
+      outline: none;
+      transition: border-color 0.15s;
+      appearance: none;
+    }
+    .settings-row select:focus {
+      border-color: rgba(52,211,153,0.4);
+      color: white;
+    }
+    .app-url-row input {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 6px;
+      padding: 6px 10px;
+      color: rgba(255,255,255,0.6);
+      font-size: 11px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .app-url-row input:focus {
+      border-color: rgba(52,211,153,0.4);
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="26" height="26">
+        <defs>
+          <linearGradient id="p-bg" x1="4" y1="4" x2="44" y2="44" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#1e1e2e"/><stop offset="1" stop-color="#16161e"/>
+          </linearGradient>
+          <linearGradient id="p-ac" x1="12" y1="12" x2="38" y2="38" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#6ee7b7"/><stop offset=".5" stop-color="#34d399"/><stop offset="1" stop-color="#10b981"/>
+          </linearGradient>
+          <linearGradient id="p-wv" x1="28" y1="14" x2="40" y2="34" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#6ee7b7" stop-opacity=".9"/><stop offset="1" stop-color="#34d399" stop-opacity=".3"/>
+          </linearGradient>
+        </defs>
+        <rect x="1" y="1" width="46" height="46" rx="14" fill="url(#p-bg)"/>
+        <rect x="1.5" y="1.5" width="45" height="45" rx="13.5" stroke="white" stroke-opacity=".06" stroke-width="1"/>
+        <path d="M15.5 13v21.5h14" stroke="url(#p-ac)" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M29 17.5a8.5 8.5 0 0 1 0 13" stroke="url(#p-wv)" stroke-width="2.2" stroke-linecap="round"/>
+        <path d="M33.5 14a13.5 13.5 0 0 1 0 20" stroke="url(#p-wv)" stroke-width="2" stroke-linecap="round" opacity=".5"/>
+        <path d="M37.5 11a18 18 0 0 1 0 26" stroke="url(#p-wv)" stroke-width="1.8" stroke-linecap="round" opacity=".2"/>
+      </svg>
+      <span class="logo-text">lec<span>transcribe</span></span>
+    </div>
+    <span class="status-badge inactive" id="status">대기중</span>
+  </div>
+
+  <div class="content" id="content">
+    <div class="empty-state" id="empty">
+      <div class="empty-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 18.5v-13"/>
+          <path d="M5 12l7-7 7 7"/>
+        </svg>
+      </div>
+      <p>YouTube 영상 페이지나 LMS에서<br>강의 영상을 재생하면 자동으로 감지됩니다</p>
+    </div>
+    <div id="video-list" style="display:none;"></div>
+  </div>
+
+  <div class="footer">
+    <div class="app-url-toggle" id="url-toggle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+      설정
+    </div>
+    <div class="settings-row" id="url-row">
+      <label>App URL</label>
+      <input type="text" id="app-url" value="https://lectranscribe.vercel.app" placeholder="App URL" />
+    </div>
+    <div class="settings-row" id="speed-row">
+      <label>녹음 배속</label>
+      <select id="playback-rate">
+        <option value="1">1x (원본 품질)</option>
+        <option value="2" selected>2x (추천)</option>
+        <option value="4">4x (빠름)</option>
+      </select>
+    </div>
+    <div class="settings-row" id="project-row">
+      <label>프로젝트</label>
+      <select id="project-select">
+        <option value="">분류 안 함</option>
+      </select>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

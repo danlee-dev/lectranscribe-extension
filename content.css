@@ -1,0 +1,7 @@
+#lectranscribe-float {
+  all: initial;
+}
+
+#lectranscribe-float * {
+  box-sizing: border-box;
+}
