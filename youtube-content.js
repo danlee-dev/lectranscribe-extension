@@ -753,6 +753,16 @@ function init() {
   }
 }
 
+// Belt-and-suspenders: if the page unloads mid-recording (user refreshes or
+// closes), proactively tell the background to stop. The onUpdated listener in
+// background.js also catches this, but sending here reduces the window where
+// Chrome's tabCapture indicator would linger.
+window.addEventListener("beforeunload", () => {
+  if (isProcessing) {
+    try { chrome.runtime.sendMessage({ type: "LT_STOP_RECORDING" }); } catch {}
+  }
+});
+
 // Initialize i18n first, then set up everything else
 (async () => {
   await LT_I18N.init();

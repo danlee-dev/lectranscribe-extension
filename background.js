@@ -189,12 +189,31 @@ async function syncPopupForTab(tab) {
   } catch {}
 }
 
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === "loading") {
     syncPopupForTab(tab);
+
+    // If the tab that was being recorded navigated/refreshed, the captured
+    // MediaStream is now orphaned (its consumer content script is gone).
+    // Force-stop the offscreen recorder so Chrome releases the tabCapture
+    // indicator and future start-recording calls aren't blocked by an
+    // "active stream" conflict.
+    if (recordingState.has(tabId)) {
+      console.log("[LecTranscribe bg] recording tab navigated/reloaded — cleaning up");
+      forceCleanupRecording().catch(() => {});
+    }
   }
   // Fetch interceptor is now injected via manifest content_scripts (youtube-intercept.js)
 });
+
+// Tab closed while recording → same cleanup path
+chrome.tabs.onRemoved.addListener((tabId) => {
+  if (recordingState.has(tabId)) {
+    console.log("[LecTranscribe bg] recording tab closed — cleaning up");
+    forceCleanupRecording().catch(() => {});
+  }
+});
+
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
