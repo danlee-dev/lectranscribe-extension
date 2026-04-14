@@ -449,6 +449,66 @@ function formatClock(seconds) {
 }
 
 // ---------------------------------------------------------------------------
+// Mute gate — block recording start until the user unmutes in YouTube itself
+// ---------------------------------------------------------------------------
+// Returns "ok" when the video becomes unmuted, "cancel" when the user bails.
+// We deliberately do NOT flip videoEl.muted — that would blast audio through
+// the user's speakers without consent.
+function waitForUnmute(videoEl) {
+  return new Promise((resolve) => {
+    showStatusCard(`
+      <div class="row">
+        <span class="label">주의</span>
+        <span class="value" style="color: #fbbf24;">YouTube 플레이어 음소거</span>
+      </div>
+      <div style="margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: rgba(255,255,255,0.62); word-break: keep-all;">
+        <strong style="color: rgba(255,255,255,0.92); font-weight: 600;">YouTube 플레이어 자체</strong>가 음소거 상태예요. 이대로 녹음하면 소리가 안 담겨요.<br>
+        <span style="color: rgba(255,255,255,0.4);">(컴퓨터 시스템 볼륨이 아니에요 — 이건 그대로 둬도 돼요.)</span>
+      </div>
+      <div style="margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(251, 191, 36, 0.07); border: 1px solid rgba(251, 191, 36, 0.18); font-size: 11.5px; line-height: 1.5; color: rgba(255,255,255,0.78); word-break: keep-all;">
+        영상 아래쪽 <strong style="color: #fbbf24;">스피커 아이콘</strong>을 누르거나 <strong style="color: #fbbf24;">M 키</strong>로 해제해주세요. 해제하면 녹음이 자동으로 시작돼요.
+      </div>
+      <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
+        <button data-lt-action="cancel" style="
+          font-family: inherit;
+          font-size: 11.5px;
+          font-weight: 500;
+          letter-spacing: -0.01em;
+          color: rgba(255, 255, 255, 0.5);
+          background: transparent;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          border-radius: 8px;
+          padding: 5px 11px;
+          cursor: pointer;
+          transition: color 0.15s, border-color 0.15s;
+        " onmouseenter="this.style.color='rgba(255,255,255,0.85)';this.style.borderColor='rgba(255,255,255,0.25)'" onmouseleave="this.style.color='rgba(255,255,255,0.5)';this.style.borderColor='rgba(255,255,255,0.12)'">취소</button>
+      </div>
+    `);
+
+    const card = document.getElementById("lt-yt-status-card");
+    const cancelBtn = card?.querySelector('[data-lt-action="cancel"]');
+
+    const cleanup = () => {
+      videoEl.removeEventListener("volumechange", onVolChange);
+      cancelBtn?.removeEventListener("click", onCancel);
+    };
+    const onVolChange = () => {
+      if (!videoEl.muted && videoEl.volume >= 0.05) {
+        cleanup();
+        resolve("ok");
+      }
+    };
+    const onCancel = () => {
+      cleanup();
+      resolve("cancel");
+    };
+
+    videoEl.addEventListener("volumechange", onVolChange);
+    cancelBtn?.addEventListener("click", onCancel);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Background message helpers
 // ---------------------------------------------------------------------------
 
@@ -507,6 +567,20 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     // Reset video to start and play at configured speed
     const videoEl = document.querySelector("video");
     if (videoEl) {
+      // Detect YouTube-player-level mute / volume-0 which would cause
+      // tabCapture to record silence. We do NOT auto-unmute — just warn
+      // the user and wait for them to unmute in YouTube, then proceed.
+      if (videoEl.muted || videoEl.volume < 0.05) {
+        const action = await waitForUnmute(videoEl);
+        if (action === "cancel") {
+          hideStatusCard();
+          try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
+          setLabel("녹음 취소됨");
+          hideStatus(2500);
+          return;
+        }
+      }
+
       videoEl.currentTime = 0;
       videoEl.playbackRate = playbackRate;
       try { await videoEl.play(); } catch {}
