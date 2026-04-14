@@ -143,14 +143,21 @@ function renderVideos(videos) {
     if (result.playbackRate) playbackRateSelect.value = result.playbackRate;
 
     chrome.runtime.sendMessage({ type: "GET_PROJECTS" }, (res) => {
-      if (res?.projects?.length > 0) {
-        res.projects.forEach((p) => {
+      const projects = res?.projects || [];
+      if (projects.length > 0) {
+        projects.forEach((p) => {
           const opt = document.createElement("option");
           opt.value = p.id;
           opt.textContent = p.name;
           projectSelect.appendChild(opt);
         });
-        if (result.selectedProjectId) projectSelect.value = result.selectedProjectId;
+        if (result.selectedProjectId && projects.some((p) => p.id === result.selectedProjectId)) {
+          projectSelect.value = result.selectedProjectId;
+        } else if (result.selectedProjectId) {
+          chrome.storage.local.remove(["selectedProjectId"]);
+        }
+      } else if (result.selectedProjectId) {
+        chrome.storage.local.remove(["selectedProjectId"]);
       }
     });
   });

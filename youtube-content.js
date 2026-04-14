@@ -347,7 +347,17 @@ function createFloatingButton() {
           opt.textContent = p.name;
           projectSelect.appendChild(opt);
         });
-        if (result.selectedProjectId) projectSelect.value = result.selectedProjectId;
+        // If the stored selectedProjectId still matches a current project, keep
+        // it. Otherwise (deleted / wrong account / orphaned) clear it so we
+        // don't attach new transcripts to a non-existent project.
+        if (result.selectedProjectId && projects.some((p) => p.id === result.selectedProjectId)) {
+          projectSelect.value = result.selectedProjectId;
+        } else if (result.selectedProjectId) {
+          chrome.storage.local.remove(["selectedProjectId"]);
+        }
+      } else if (result.selectedProjectId) {
+        // Account has no projects at all — drop the stale id.
+        chrome.storage.local.remove(["selectedProjectId"]);
       }
     });
   });
