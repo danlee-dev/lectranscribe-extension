@@ -6,57 +6,44 @@ const urlToggle = document.getElementById("url-toggle");
 const urlRow = document.getElementById("url-row");
 const speedRow = document.getElementById("speed-row");
 const projectRow = document.getElementById("project-row");
+const langRow = document.getElementById("lang-row");
 const playbackRateSelect = document.getElementById("playback-rate");
 const projectSelect = document.getElementById("project-select");
+const langSelect = document.getElementById("lang-select");
 
-// 설정 토글
+// Apply translations to any element with [data-i18n] or [data-i18n-html]
+function applyTranslations() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const key = el.getAttribute("data-i18n");
+    el.textContent = LT_I18N.t(key);
+  });
+  document.querySelectorAll("[data-i18n-html]").forEach((el) => {
+    const key = el.getAttribute("data-i18n-html");
+    el.innerHTML = LT_I18N.t(key);
+  });
+}
+
+// 설정 토글 — 언어 행도 함께
 urlToggle.addEventListener("click", () => {
   urlToggle.classList.toggle("open");
   urlRow.classList.toggle("visible");
   speedRow.classList.toggle("visible");
   projectRow.classList.toggle("visible");
+  langRow.classList.toggle("visible");
 });
 
-// 저장된 설정 불러오기
-chrome.storage.local.get(["appUrl", "playbackRate", "selectedProjectId"], (result) => {
-  if (result.appUrl) appUrlInput.value = result.appUrl;
-  if (result.playbackRate) playbackRateSelect.value = result.playbackRate;
-
-  // 프로젝트 목록 로드 (background.js 경유)
-  chrome.runtime.sendMessage({ type: "GET_PROJECTS" }, (res) => {
-    if (res?.projects?.length > 0) {
-      res.projects.forEach((p) => {
-        const opt = document.createElement("option");
-        opt.value = p.id;
-        opt.textContent = p.name;
-        projectSelect.appendChild(opt);
-      });
-      if (result.selectedProjectId) projectSelect.value = result.selectedProjectId;
-    }
-  });
-});
-
-// 앱 URL 변경 시 저장
-appUrlInput.addEventListener("change", () => {
-  chrome.storage.local.set({ appUrl: appUrlInput.value });
-});
-
-// 배속 변경 시 저장
-playbackRateSelect.addEventListener("change", () => {
-  chrome.storage.local.set({ playbackRate: playbackRateSelect.value });
-});
-
-// 프로젝트 변경 시 저장
-projectSelect.addEventListener("change", () => {
-  chrome.storage.local.set({ selectedProjectId: projectSelect.value });
+// 언어 선택 변경
+langSelect.addEventListener("change", async () => {
+  await LT_I18N.setLang(langSelect.value);
+  applyTranslations();
+  // Re-render video list so dynamic strings like "전사 시작" flip too
+  rerenderVideos();
 });
 
 function formatTime(ts) {
   const d = new Date(ts);
-  return d.toLocaleTimeString("ko-KR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const lang = LT_I18N.getLang() === "en" ? "en-US" : "ko-KR";
+  return d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatDuration(seconds) {
@@ -66,18 +53,25 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+let lastVideos = [];
+
+function rerenderVideos() {
+  if (lastVideos.length > 0) renderVideos(lastVideos);
+}
+
 function renderVideos(videos) {
+  lastVideos = videos || [];
   if (!videos || videos.length === 0) {
     empty.style.display = "block";
     videoList.style.display = "none";
-    status.textContent = "대기중";
+    status.textContent = LT_I18N.t("popupStandby");
     status.className = "status-badge inactive";
     return;
   }
 
   empty.style.display = "none";
   videoList.style.display = "block";
-  status.textContent = `${videos.length}개 감지`;
+  status.textContent = LT_I18N.t("popupDetectedCount", { n: videos.length });
   status.className = "status-badge active";
 
   videoList.innerHTML = videos
@@ -94,7 +88,7 @@ function renderVideos(videos) {
         <div class="time">${v.duration ? formatDuration(v.duration) : formatTime(v.timestamp)}</div>
       </div>
       <div class="video-action">
-        <span>${idx === 0 ? "전사 시작" : "전사"}</span>
+        <span>${idx === 0 ? LT_I18N.t("popupActionStart") : LT_I18N.t("popupActionNext")}</span>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 12h14M13 6l6 6-6 6"/>
         </svg>
@@ -108,16 +102,16 @@ function renderVideos(videos) {
   document.querySelectorAll(".video-item").forEach((el) => {
     el.addEventListener("click", () => {
       const videoUrl = el.dataset.url;
-      // Check if this is a YouTube video
       if (videoUrl.includes("youtube.com") || videoUrl.includes("youtu.be")) {
-        el.querySelector(".video-action").textContent = "처리중...";
+        const labelSpan = el.querySelector(".video-action span");
+        if (labelSpan) labelSpan.textContent = LT_I18N.t("popupActionProcessing");
         chrome.runtime.sendMessage({ type: "TRANSCRIBE_YOUTUBE" }, (res) => {
           if (res?.ok) {
             window.close();
           } else {
-            el.querySelector(".video-action").textContent = res?.error || "오류 발생";
+            if (labelSpan) labelSpan.textContent = res?.error || LT_I18N.t("popupErrorGeneric");
             setTimeout(() => {
-              el.querySelector(".video-action").textContent = "전사 →";
+              if (labelSpan) labelSpan.textContent = LT_I18N.t("popupActionNext");
             }, 3000);
           }
         });
@@ -133,42 +127,80 @@ function renderVideos(videos) {
   });
 }
 
-// 현재 탭 확인: YouTube인지 LMS인지
-chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  const tab = tabs[0];
-  if (!tab?.url) return;
+// Bootstrap — init i18n first, then load settings + videos
+(async () => {
+  await LT_I18N.init();
+  applyTranslations();
 
-  const isYouTube =
-    tab.url.includes("youtube.com/watch") ||
-    tab.url.includes("youtube.com/shorts/");
+  // Reflect stored lang override in the selector
+  LT_I18N.getStoredOverride((stored) => {
+    langSelect.value = stored; // "auto" | "ko" | "en"
+  });
 
-  if (isYouTube) {
-    // YouTube: 영상 정보 가져오기
-    chrome.runtime.sendMessage({ type: "GET_YOUTUBE_VIDEO" }, (response) => {
-      if (response?.video) {
-        const v = response.video;
-        renderVideos([
-          {
-            url: v.url,
-            title: v.title,
-            duration: v.duration,
-            contentId: v.title,
-            timestamp: Date.now(),
-          },
-        ]);
-      } else {
-        empty.style.display = "block";
-        empty.querySelector("p").textContent =
-          "영상 정보를 가져올 수 없어요. 영상을 재생한 후 다시 시도해주세요.";
+  // 저장된 설정 불러오기
+  chrome.storage.local.get(["appUrl", "playbackRate", "selectedProjectId"], (result) => {
+    if (result.appUrl) appUrlInput.value = result.appUrl;
+    if (result.playbackRate) playbackRateSelect.value = result.playbackRate;
+
+    chrome.runtime.sendMessage({ type: "GET_PROJECTS" }, (res) => {
+      if (res?.projects?.length > 0) {
+        res.projects.forEach((p) => {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.name;
+          projectSelect.appendChild(opt);
+        });
+        if (result.selectedProjectId) projectSelect.value = result.selectedProjectId;
       }
     });
-  } else {
-    // LMS: 기존 동작
-    chrome.runtime.sendMessage(
-      { type: "GET_CURRENT_TAB_VIDEOS" },
-      (response) => {
-        renderVideos(response?.videos || []);
-      }
-    );
-  }
-});
+  });
+
+  // 앱 URL 변경 시 저장
+  appUrlInput.addEventListener("change", () => {
+    chrome.storage.local.set({ appUrl: appUrlInput.value });
+  });
+  playbackRateSelect.addEventListener("change", () => {
+    chrome.storage.local.set({ playbackRate: playbackRateSelect.value });
+  });
+  projectSelect.addEventListener("change", () => {
+    chrome.storage.local.set({ selectedProjectId: projectSelect.value });
+  });
+
+  // 현재 탭 확인: YouTube인지 LMS인지
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    const tab = tabs[0];
+    if (!tab?.url) return;
+
+    const isYouTube =
+      tab.url.includes("youtube.com/watch") ||
+      tab.url.includes("youtube.com/shorts/");
+
+    if (isYouTube) {
+      chrome.runtime.sendMessage({ type: "GET_YOUTUBE_VIDEO" }, (response) => {
+        if (response?.video) {
+          const v = response.video;
+          renderVideos([
+            {
+              url: v.url,
+              title: v.title,
+              duration: v.duration,
+              contentId: v.title,
+              timestamp: Date.now(),
+            },
+          ]);
+        } else {
+          empty.style.display = "block";
+          const p = empty.querySelector("p");
+          if (p) p.textContent = LT_I18N.t("popupYtUnavailable");
+        }
+      });
+    } else {
+      chrome.runtime.sendMessage(
+        { type: "GET_CURRENT_TAB_VIDEOS" },
+        (response) => {
+          renderVideos(response?.videos || []);
+        }
+      );
+    }
+  });
+})();

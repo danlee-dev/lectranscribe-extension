@@ -369,13 +369,13 @@
 <body>
   <div class="rail">
     <span class="brand">LecTranscribe</span>
-    <span class="status-badge inactive" id="status">대기중</span>
+    <span class="status-badge inactive" id="status" data-i18n="popupStandby">대기중</span>
   </div>
 
   <div class="content" id="content">
     <div class="empty-state" id="empty">
-      <h2>감지된 영상이<br>없어요</h2>
-      <p>YouTube나 학교 LMS 영상을 재생하면<br>여기서 바로 전사 시작할 수 있어요.</p>
+      <h2 data-i18n-html="popupEmptyTitle">감지된 영상이<br>없어요</h2>
+      <p data-i18n-html="popupEmptyBody">YouTube나 학교 LMS 영상을 재생하면<br>여기서 바로 전사 시작할 수 있어요.</p>
     </div>
     <div id="video-list" style="display:none;"></div>
   </div>
@@ -385,28 +385,37 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="9 18 15 12 9 6"/>
       </svg>
-      Settings
+      <span data-i18n="popupSettings">Settings</span>
     </div>
     <div class="settings-row" id="url-row">
-      <label>App URL</label>
+      <label data-i18n="popupAppUrl">App URL</label>
       <input type="text" id="app-url" value="https://lectranscribe.vercel.app" placeholder="App URL" />
     </div>
     <div class="settings-row" id="speed-row">
-      <label>배속</label>
+      <label data-i18n="popupRate">배속</label>
       <select id="playback-rate">
-        <option value="1">1× · 원본 품질</option>
-        <option value="2" selected>2× · 추천</option>
-        <option value="4">4× · 빠름</option>
+        <option value="1" data-i18n="popupRate1">1× · 원본 품질</option>
+        <option value="2" selected data-i18n="popupRate2">2× · 추천</option>
+        <option value="4" data-i18n="popupRate4">4× · 빠름</option>
       </select>
     </div>
     <div class="settings-row" id="project-row">
-      <label>프로젝트</label>
+      <label data-i18n="popupProject">프로젝트</label>
       <select id="project-select">
-        <option value="">분류 안 함</option>
+        <option value="" data-i18n="popupProjectNone">분류 안 함</option>
+      </select>
+    </div>
+    <div class="settings-row" id="lang-row">
+      <label data-i18n="popupLanguage">언어</label>
+      <select id="lang-select">
+        <option value="auto" data-i18n="popupLangAuto">자동 감지</option>
+        <option value="ko" data-i18n="popupLangKo">한국어</option>
+        <option value="en" data-i18n="popupLangEn">English</option>
       </select>
     </div>
   </div>
 
+  <script src="i18n.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

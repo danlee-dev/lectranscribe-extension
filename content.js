@@ -91,7 +91,7 @@ function createFloatingButton() {
         <span id="lt-label" style="
           font-feature-settings: 'tnum' 1;
           white-space: nowrap;
-        ">강의 감지됨</span>
+        ">${LT_I18N.t("lmsLabel")}</span>
 
         <!-- arrow hint -->
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(52, 211, 153, 0.9)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; transition: transform 0.2s ease;">
@@ -130,7 +130,9 @@ function updateBadge(count) {
 
   if (fab) fab.style.display = count > 0 ? "block" : "none";
   if (label) {
-    label.textContent = count === 1 ? "강의 감지됨" : `${count}개 감지됨`;
+    label.textContent = count === 1
+      ? LT_I18N.t("lmsLabel")
+      : LT_I18N.t("lmsLabelMany", { n: count });
   }
 }
 
@@ -142,10 +144,16 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-// 페이지 로드 시
-createFloatingButton();
-chrome.runtime.sendMessage({ type: "GET_CURRENT_TAB_VIDEOS" }, (res) => {
-  if (res?.videos?.length > 0) {
-    updateBadge(res.videos.length);
-  }
-});
+// Re-render label when language changes from popup
+document.addEventListener("lt-lang-changed", () => updateBadge(videoCount));
+
+// 페이지 로드 시 — i18n 먼저 초기화, 그 다음 UI 생성
+(async () => {
+  await LT_I18N.init();
+  createFloatingButton();
+  chrome.runtime.sendMessage({ type: "GET_CURRENT_TAB_VIDEOS" }, (res) => {
+    if (res?.videos?.length > 0) {
+      updateBadge(res.videos.length);
+    }
+  });
+})();

@@ -276,15 +276,15 @@ function createFloatingButton() {
 
       <div id="lt-yt-pill" role="group" aria-label="LecTranscribe">
         <span id="lt-yt-dot" aria-hidden="true"></span>
-        <span id="lt-yt-label">LecTranscribe</span>
+        <span id="lt-yt-label">${LT_I18N.t("ytBrand")}</span>
 
-        <button id="lt-yt-settings-btn" class="lt-yt-icon-btn" title="설정" aria-label="설정">
+        <button id="lt-yt-settings-btn" class="lt-yt-icon-btn" title="${LT_I18N.t("ytTitleSettings")}" aria-label="${LT_I18N.t("ytTitleSettings")}">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
-        <button id="lt-yt-main-btn" class="lt-yt-icon-btn" title="전사 시작" aria-label="전사 시작">
+        <button id="lt-yt-main-btn" class="lt-yt-icon-btn" title="${LT_I18N.t("ytTitleRecord")}" aria-label="${LT_I18N.t("ytTitleRecord")}">
           <svg id="lt-yt-main-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
             <path d="M5 12h14"/>
             <path d="M13 6l6 6-6 6"/>
@@ -293,19 +293,27 @@ function createFloatingButton() {
 
       </div>
 
-      <div id="lt-yt-panel" role="dialog" aria-label="설정">
+      <div id="lt-yt-panel" role="dialog" aria-label="${LT_I18N.t("ytTitleSettings")}">
         <div class="row">
-          <label>배속</label>
+          <label>${LT_I18N.t("popupRate")}</label>
           <select id="lt-yt-speed">
-            <option value="1">1× · 원본</option>
-            <option value="2">2× · 추천</option>
-            <option value="4">4× · 빠름</option>
+            <option value="1">${LT_I18N.t("popupRate1")}</option>
+            <option value="2">${LT_I18N.t("popupRate2")}</option>
+            <option value="4">${LT_I18N.t("popupRate4")}</option>
           </select>
         </div>
         <div class="row" id="lt-yt-project-row" style="display:none;">
-          <label>프로젝트</label>
+          <label>${LT_I18N.t("popupProject")}</label>
           <select id="lt-yt-project">
-            <option value="">분류 안 함</option>
+            <option value="">${LT_I18N.t("popupProjectNone")}</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>${LT_I18N.t("popupLanguage")}</label>
+          <select id="lt-yt-lang">
+            <option value="auto">${LT_I18N.t("popupLangAuto")}</option>
+            <option value="ko">${LT_I18N.t("popupLangKo")}</option>
+            <option value="en">${LT_I18N.t("popupLangEn")}</option>
           </select>
         </div>
       </div>
@@ -358,8 +366,32 @@ function createFloatingButton() {
     if (!floatingButton.contains(e.target)) panel.classList.remove("open");
   });
 
+  // Language selector — reflect stored override + persist on change
+  const langSelect = document.getElementById("lt-yt-lang");
+  if (langSelect) {
+    LT_I18N.getStoredOverride((stored) => { langSelect.value = stored; });
+    langSelect.addEventListener("change", async () => {
+      await LT_I18N.setLang(langSelect.value);
+      // Rebuild UI with new translations
+      recreateFloatingButton();
+    });
+  }
+
   const mainBtn = document.getElementById("lt-yt-main-btn");
   mainBtn.addEventListener("click", handleTranscribeClick);
+}
+
+// Destroy the current pill/panel and rebuild with current language
+function recreateFloatingButton() {
+  if (floatingButton) {
+    floatingButton.remove();
+    floatingButton = null;
+  }
+  const videoId = getVideoId();
+  if (videoId) {
+    createFloatingButton();
+    setFloatVisible(true);
+  }
 }
 
 function setRecordingUI(recording) {
@@ -371,17 +403,17 @@ function setRecordingUI(recording) {
   pill.classList.remove("error");
   if (recording) {
     pill.classList.add("recording");
-    mainBtn.title = "녹음 중단";
-    mainBtn.setAttribute("aria-label", "녹음 중단");
+    mainBtn.title = LT_I18N.t("ytTitleStop");
+    mainBtn.setAttribute("aria-label", LT_I18N.t("ytTitleStop"));
     mainIcon.setAttribute("stroke-width", "2.4");
     mainIcon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
   } else {
     pill.classList.remove("recording");
-    mainBtn.title = "전사 시작";
-    mainBtn.setAttribute("aria-label", "전사 시작");
+    mainBtn.title = LT_I18N.t("ytTitleRecord");
+    mainBtn.setAttribute("aria-label", LT_I18N.t("ytTitleRecord"));
     mainIcon.setAttribute("stroke-width", "2.4");
     mainIcon.innerHTML = '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>';
-    setLabel("LecTranscribe");
+    setLabel(LT_I18N.t("ytBrand"));
     hideStatusCard();
   }
 }
@@ -411,11 +443,11 @@ function hideStatusCard() {
 function renderRecordingCard({ remaining, rate, pct }) {
   showStatusCard(`
     <div class="row">
-      <span class="label">남은 시간</span>
+      <span class="label">${LT_I18N.t("ytCardRemaining")}</span>
       <span class="value accent">${remaining}</span>
     </div>
     <div class="row">
-      <span class="label">배속</span>
+      <span class="label">${LT_I18N.t("ytCardRate")}</span>
       <span class="value">${rate}×</span>
     </div>
     <div class="bar"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>
@@ -458,15 +490,14 @@ function waitForUnmute(videoEl) {
   return new Promise((resolve) => {
     showStatusCard(`
       <div class="row">
-        <span class="label">주의</span>
-        <span class="value" style="color: #fbbf24;">YouTube 플레이어 음소거</span>
+        <span class="label">${LT_I18N.t("ytMuteHeader")}</span>
+        <span class="value" style="color: #fbbf24;">${LT_I18N.t("ytMuteTitle")}</span>
       </div>
       <div style="margin-top: 6px; font-size: 11.5px; line-height: 1.6; color: rgba(255,255,255,0.62); word-break: keep-all;">
-        <strong style="color: rgba(255,255,255,0.92); font-weight: 600;">YouTube 플레이어 자체</strong>가 음소거 상태예요. 이대로 녹음하면 소리가 안 담겨요.<br>
-        <span style="color: rgba(255,255,255,0.4);">(컴퓨터 시스템 볼륨이 아니에요 — 이건 그대로 둬도 돼요.)</span>
+        ${LT_I18N.t("ytMuteExplain")}
       </div>
       <div style="margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: rgba(251, 191, 36, 0.07); border: 1px solid rgba(251, 191, 36, 0.18); font-size: 11.5px; line-height: 1.5; color: rgba(255,255,255,0.78); word-break: keep-all;">
-        영상 아래쪽 <strong style="color: #fbbf24;">스피커 아이콘</strong>을 누르거나 <strong style="color: #fbbf24;">M 키</strong>로 해제해주세요. 해제하면 녹음이 자동으로 시작돼요.
+        ${LT_I18N.t("ytMuteAction")}
       </div>
       <div style="margin-top: 10px; display: flex; justify-content: flex-end;">
         <button data-lt-action="cancel" style="
@@ -481,7 +512,7 @@ function waitForUnmute(videoEl) {
           padding: 5px 11px;
           cursor: pointer;
           transition: color 0.15s, border-color 0.15s;
-        " onmouseenter="this.style.color='rgba(255,255,255,0.85)';this.style.borderColor='rgba(255,255,255,0.25)'" onmouseleave="this.style.color='rgba(255,255,255,0.5)';this.style.borderColor='rgba(255,255,255,0.12)'">취소</button>
+        " onmouseenter="this.style.color='rgba(255,255,255,0.85)';this.style.borderColor='rgba(255,255,255,0.25)'" onmouseleave="this.style.color='rgba(255,255,255,0.5)';this.style.borderColor='rgba(255,255,255,0.12)'">${LT_I18N.t("ytCancel")}</button>
       </div>
     `);
 
@@ -535,7 +566,7 @@ function handleTranscribeClick() {
 
   const videoEl = document.querySelector("video");
   if (!videoEl || !Number.isFinite(videoEl.duration) || videoEl.duration === 0) {
-    setStatus("영상을 먼저 재생해주세요.", true);
+    setStatus(LT_I18N.t("ytPlayFirst"), true);
     hideStatus(5000);
     return;
   }
@@ -544,8 +575,8 @@ function handleTranscribeClick() {
   chrome.storage.local.get(["playbackRate", "selectedProjectId"], (result) => {
     const rate = result.playbackRate || "2";
     const hasProject = !!result.selectedProjectId;
-    const lines = [`우측 상단의 LecTranscribe 아이콘을 클릭하면 ${rate}배속으로 녹음이 시작돼요.`];
-    if (!hasProject) lines.push("프로젝트 설정은 아이콘 옆 배속/프로젝트 선택기에서 할 수 있어요.");
+    const lines = [LT_I18N.t("ytGuideIcon", { rate })];
+    if (!hasProject) lines.push(LT_I18N.t("ytGuideProject"));
     setStatus(lines.join(" "));
   });
 }
@@ -575,7 +606,7 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
         if (action === "cancel") {
           hideStatusCard();
           try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
-          setLabel("녹음 취소됨");
+          setLabel(LT_I18N.t("ytCancelled"));
           hideStatus(2500);
           return;
         }
@@ -587,11 +618,11 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     }
 
     setRecordingUI(true);
-    setLabel("녹음 중");
+    setLabel(LT_I18N.t("ytRecording"));
 
     // Initial card with placeholder numbers so it animates in immediately
     renderRecordingCard({
-      remaining: "—:—",
+      remaining: LT_I18N.t("ytCardClockPlaceholder"),
       rate: playbackRate,
       pct: 0,
     });
@@ -638,14 +669,14 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     if (aborted) {
       // User cancelled — stop recording, don't upload
       if (videoEl) videoEl.pause();
-      setStatus("녹음이 중단됐어요.", true);
+      setStatus(LT_I18N.t("ytStatusStopped"), true);
       try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
       hideStatus(3000);
       return;
     }
 
     // Stop recording + upload in background (avoids ArrayBuffer message transfer)
-    setStatus("녹음을 마무리하고 업로드하고 있어요...");
+    setStatus(LT_I18N.t("ytStatusUploading"));
     const stopUpRes = await bgSend({
       type: "LT_STOP_AND_UPLOAD",
       uploadEndpoint,
@@ -666,7 +697,7 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     }
 
     const appUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || APP_URL_DEFAULT;
-    setStatus("전사가 시작됐어요. 대시보드에서 확인하세요.");
+    setStatus(LT_I18N.t("ytStatusStarted"));
     setTimeout(async () => {
       const { selectedProjectId: pid } = await chrome.storage.local.get(["selectedProjectId"]);
       window.open(`${appUrl}/dashboard${pid ? `?project=${pid}` : ""}`, "_blank");
@@ -674,7 +705,7 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     hideStatus(5000);
   } catch (e) {
     console.error("[LecTranscribe]", e);
-    setStatus(e.message || "문제가 발생했어요.", true);
+    setStatus(e.message || LT_I18N.t("ytStatusError"), true);
     hideStatus(6000);
     try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
   } finally {
@@ -719,17 +750,25 @@ function init() {
     // Non-watch YouTube page (home, subscriptions, search, etc.): hide the
     // pill so it doesn't linger after SPA navigation.
     setFloatVisible(false);
-    // If a recording was in progress, let it finish — runRecordingFlow owns
-    // its own state machine.
   }
 }
 
-init();
+// Initialize i18n first, then set up everything else
+(async () => {
+  await LT_I18N.init();
+  init();
 
-let lastUrl = location.href;
-new MutationObserver(() => {
-  if (location.href !== lastUrl) {
-    lastUrl = location.href;
-    init();
-  }
-}).observe(document, { subtree: true, childList: true });
+  let lastUrl = location.href;
+  new MutationObserver(() => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href;
+      init();
+    }
+  }).observe(document, { subtree: true, childList: true });
+
+  // Language flip from another context (popup) — rebuild the pill so all
+  // static strings re-render in the new language.
+  document.addEventListener("lt-lang-changed", () => {
+    recreateFloatingButton();
+  });
+})();
