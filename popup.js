@@ -82,8 +82,8 @@ function renderVideos(videos) {
 
   videoList.innerHTML = videos
     .map(
-      (v) => `
-    <div class="video-item" data-url="${v.url}">
+      (v, idx) => `
+    <div class="video-item${idx === 0 ? " primary" : ""}" data-url="${v.url}">
       <div class="video-icon">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polygon points="5 3 19 12 5 21 5 3"/>
@@ -93,7 +93,12 @@ function renderVideos(videos) {
         <div class="id">${v.contentId || v.title}</div>
         <div class="time">${v.duration ? formatDuration(v.duration) : formatTime(v.timestamp)}</div>
       </div>
-      <div class="video-action">전사 &rarr;</div>
+      <div class="video-action">
+        <span>${idx === 0 ? "전사 시작" : "전사"}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M13 6l6 6-6 6"/>
+        </svg>
+      </div>
     </div>
   `
     )

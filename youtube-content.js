@@ -53,7 +53,7 @@ function createFloatingButton() {
       font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     ">
       <div id="lt-yt-status" style="
-        background: #0c0c0e;
+        background: #0a0a0a;
         border: 1px solid rgba(255,255,255,0.08);
         border-radius: 12px;
         padding: 10px 14px;
@@ -67,7 +67,7 @@ function createFloatingButton() {
       "></div>
       <div style="display: flex; align-items: center; gap: 6px;">
         <select id="lt-yt-project" style="
-          background: #0c0c0e;
+          background: #0a0a0a;
           border: 1px solid rgba(255,255,255,0.1);
           border-radius: 10px;
           padding: 6px 8px;
@@ -85,7 +85,7 @@ function createFloatingButton() {
           <option value="">--</option>
         </select>
         <select id="lt-yt-speed" style="
-          background: #0c0c0e;
+          background: #0a0a0a;
           border: 1px solid rgba(255,255,255,0.1);
           border-radius: 10px;
           padding: 6px 8px;

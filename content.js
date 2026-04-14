@@ -1,95 +1,123 @@
-// LMS 페이지에 전사 버튼 오버레이 추가
+// LMS 페이지용 전사 플로팅 버튼
+//
+// 디자인 방향:
+// - 사각 원형 FAB 대신 바닥-우측에서 슬라이드 업 하는 가로 pill
+// - 영상 감지 전엔 숨김 상태 — 페이지를 방해하지 않음
+// - 영상 감지 시 등장, hover 하면 확장되며 CTA 문구 노출
+// - 다크 네이비 없는 순수 neutral + emerald hairline
 
 let floatingButton = null;
 let videoCount = 0;
 
+const STYLES = `
+  @keyframes lt-enter { from { transform: translateY(14px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  #lt-fab { animation: lt-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
+`;
+
+function ensureStyles() {
+  if (document.getElementById("lt-style")) return;
+  const s = document.createElement("style");
+  s.id = "lt-style";
+  s.textContent = STYLES;
+  document.head.appendChild(s);
+}
+
 function createFloatingButton() {
   if (floatingButton) return;
+  ensureStyles();
 
   floatingButton = document.createElement("div");
   floatingButton.id = "lectranscribe-float";
   floatingButton.innerHTML = `
     <div id="lt-fab" style="
       position: fixed;
-      bottom: 24px;
-      right: 24px;
+      bottom: 20px;
+      right: 20px;
       z-index: 99999;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
-      font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: none;
+      font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     ">
-      <div id="lt-tooltip" style="
-        background: #0f0f17;
-        border: 1px solid rgba(52, 211, 153, 0.15);
-        border-radius: 12px;
-        padding: 12px 16px;
-        color: white;
-        font-size: 13px;
-        display: none;
-        max-width: 260px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-        backdrop-filter: blur(12px);
-      ">
-        <div id="lt-video-info" style="color: rgba(255,255,255,0.5); font-size: 12px; line-height: 1.5;"></div>
-      </div>
       <button id="lt-main-btn" style="
-        width: 52px;
-        height: 52px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #34d399, #2dd4bf);
-        border: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 4px 24px rgba(52, 211, 153, 0.3);
-        transition: transform 0.15s, box-shadow 0.15s;
         position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 11px 16px 11px 14px;
+        background: rgba(12, 12, 12, 0.86);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        cursor: pointer;
+        color: rgba(255, 255, 255, 0.95);
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+        backdrop-filter: blur(18px) saturate(180%);
+        -webkit-backdrop-filter: blur(18px) saturate(180%);
+        transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+                    border-color 0.2s ease,
+                    padding 0.2s ease,
+                    background 0.2s ease;
+        overflow: hidden;
       ">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 20h9"/>
-          <path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-        </svg>
-        <span id="lt-badge" style="
+        <!-- top hairline accent -->
+        <span aria-hidden="true" style="
           position: absolute;
-          top: -3px;
-          right: -3px;
-          background: #ef4444;
-          color: white;
-          font-size: 10px;
-          font-weight: 700;
-          width: 18px;
-          height: 18px;
+          top: 0; left: 16px; right: 16px;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.55), transparent);
+        "></span>
+
+        <!-- status indicator (emerald pulse) -->
+        <span aria-hidden="true" style="
+          position: relative;
+          width: 7px;
+          height: 7px;
           border-radius: 50%;
-          display: none;
-          align-items: center;
-          justify-content: center;
-        ">0</span>
+          background: #34d399;
+          box-shadow: 0 0 10px rgba(52, 211, 153, 0.75);
+          flex-shrink: 0;
+        ">
+          <span style="
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            border: 1px solid rgba(52, 211, 153, 0.45);
+            animation: lt-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+          "></span>
+        </span>
+
+        <!-- label (count changes here) -->
+        <span id="lt-label" style="
+          font-feature-settings: 'tnum' 1;
+          white-space: nowrap;
+        ">강의 감지됨</span>
+
+        <!-- arrow hint -->
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(52, 211, 153, 0.9)" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0; transition: transform 0.2s ease;">
+          <path d="M5 12h14"/>
+          <path d="M13 6l6 6-6 6"/>
+        </svg>
       </button>
     </div>
+    <style>
+      @keyframes lt-pulse {
+        0% { transform: scale(1); opacity: 0.9; }
+        100% { transform: scale(2.4); opacity: 0; }
+      }
+      #lt-main-btn:hover {
+        border-color: rgba(52, 211, 153, 0.4) !important;
+        background: rgba(16, 16, 16, 0.9) !important;
+        padding-right: 20px !important;
+      }
+      #lt-main-btn:hover svg { transform: translateX(3px); }
+      #lt-main-btn:active { transform: scale(0.97); }
+    </style>
   `;
 
   document.body.appendChild(floatingButton);
 
   const mainBtn = document.getElementById("lt-main-btn");
-  const tooltip = document.getElementById("lt-tooltip");
-
-  mainBtn.addEventListener("mouseenter", () => {
-    mainBtn.style.transform = "scale(1.08)";
-    mainBtn.style.boxShadow = "0 6px 28px rgba(52, 211, 153, 0.4)";
-    if (videoCount > 0) {
-      tooltip.style.display = "block";
-    }
-  });
-
-  mainBtn.addEventListener("mouseleave", () => {
-    mainBtn.style.transform = "scale(1)";
-    mainBtn.style.boxShadow = "0 4px 24px rgba(52, 211, 153, 0.3)";
-    tooltip.style.display = "none";
-  });
-
   mainBtn.addEventListener("click", () => {
     chrome.runtime.sendMessage({ type: "OPEN_LATEST" });
   });
@@ -97,15 +125,12 @@ function createFloatingButton() {
 
 function updateBadge(count) {
   videoCount = count;
-  const badge = document.getElementById("lt-badge");
-  const videoInfo = document.getElementById("lt-video-info");
+  const fab = document.getElementById("lt-fab");
+  const label = document.getElementById("lt-label");
 
-  if (badge) {
-    badge.style.display = "flex";
-    badge.textContent = String(count);
-  }
-  if (videoInfo) {
-    videoInfo.textContent = `${count}개 영상 감지됨 — 클릭하여 전사`;
+  if (fab) fab.style.display = count > 0 ? "block" : "none";
+  if (label) {
+    label.textContent = count === 1 ? "강의 감지됨" : `${count}개 감지됨`;
   }
 }
 
@@ -114,18 +139,11 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "VIDEO_DETECTED") {
     createFloatingButton();
     updateBadge(message.count);
-
-    const tooltip = document.getElementById("lt-tooltip");
-    if (tooltip) {
-      tooltip.style.display = "block";
-      setTimeout(() => { tooltip.style.display = "none"; }, 3000);
-    }
   }
 });
 
-// 페이지 로드 시: 버튼 생성 + 이미 감지된 영상 있는지 background에 확인
+// 페이지 로드 시
 createFloatingButton();
-
 chrome.runtime.sendMessage({ type: "GET_CURRENT_TAB_VIDEOS" }, (res) => {
   if (res?.videos?.length > 0) {
     updateBadge(res.videos.length);
