@@ -323,17 +323,17 @@ function createFloatingButton() {
     chrome.storage.local.set({ playbackRate: speedSelect.value });
   });
 
-  // Projects from the app
+  // Projects from the app — go through the background service worker so the
+  // request carries cookies without CORS friction (content scripts run in
+  // the YouTube origin and can't send credentialed requests to our backend).
   const projectSelect = document.getElementById("lt-yt-project");
   const projectRow = document.getElementById("lt-yt-project-row");
-  chrome.storage.local.get(["appUrl", "selectedProjectId"], async (result) => {
-    const appUrl = result.appUrl || APP_URL_DEFAULT;
-    try {
-      const res = await fetch(`${appUrl}/api/projects`, { credentials: "include" });
-      const data = await res.json();
-      if (data.projects?.length > 0) {
+  chrome.storage.local.get(["selectedProjectId"], (result) => {
+    chrome.runtime.sendMessage({ type: "GET_PROJECTS" }, (res) => {
+      const projects = res?.projects || [];
+      if (projects.length > 0) {
         projectRow.style.display = "flex";
-        data.projects.forEach((p) => {
+        projects.forEach((p) => {
           const opt = document.createElement("option");
           opt.value = p.id;
           opt.textContent = p.name;
@@ -341,7 +341,7 @@ function createFloatingButton() {
         });
         if (result.selectedProjectId) projectSelect.value = result.selectedProjectId;
       }
-    } catch {}
+    });
   });
   projectSelect.addEventListener("change", () => {
     chrome.storage.local.set({ selectedProjectId: projectSelect.value });
