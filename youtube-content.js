@@ -35,100 +35,248 @@ function getVideoDurationSec() {
 // Floating button UI
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Styles — injected once so the pill can react via class changes
+// ---------------------------------------------------------------------------
+const YT_STYLES = `
+  @keyframes lt-yt-enter {
+    from { transform: translateY(14px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
+  @keyframes lt-yt-pulse {
+    0% { transform: scale(1); opacity: 0.9; }
+    100% { transform: scale(2.4); opacity: 0; }
+  }
+  #lt-yt-float { animation: lt-yt-enter 0.42s cubic-bezier(0.22, 1, 0.36, 1); }
+  #lt-yt-pill {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 6px 10px 14px;
+    background: rgba(12, 12, 12, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12.5px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    transition: border-color 0.2s ease, background 0.2s ease;
+    overflow: hidden;
+  }
+  #lt-yt-pill::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 16px;
+    right: 16px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.55), transparent);
+  }
+  #lt-yt-pill.recording::before {
+    background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.7), transparent);
+  }
+  #lt-yt-pill.error::before {
+    background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.7), transparent);
+  }
+  #lt-yt-dot {
+    position: relative;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #34d399;
+    box-shadow: 0 0 10px rgba(52, 211, 153, 0.75);
+    flex-shrink: 0;
+  }
+  #lt-yt-dot::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid rgba(52, 211, 153, 0.45);
+    animation: lt-yt-pulse 1.8s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+  #lt-yt-pill.recording #lt-yt-dot { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.75); }
+  #lt-yt-pill.recording #lt-yt-dot::after { border-color: rgba(239, 68, 68, 0.5); animation-duration: 1.2s; }
+  #lt-yt-pill.error #lt-yt-dot { background: #fbbf24; box-shadow: 0 0 10px rgba(251, 191, 36, 0.6); }
+  #lt-yt-pill.error #lt-yt-dot::after { display: none; }
+
+  #lt-yt-label {
+    white-space: nowrap;
+    max-width: 360px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.15s ease;
+  }
+  #lt-yt-pill.error #lt-yt-label { color: #fca5a5; }
+
+  #lt-yt-countdown {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.75);
+    display: none;
+  }
+  #lt-yt-pill.recording #lt-yt-countdown { display: inline-block; }
+
+  .lt-yt-icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    flex-shrink: 0;
+  }
+  .lt-yt-icon-btn:hover { background: rgba(255, 255, 255, 0.06); color: rgba(255, 255, 255, 0.9); }
+  .lt-yt-icon-btn:active { transform: scale(0.94); }
+  #lt-yt-main-btn { color: #34d399; }
+  #lt-yt-main-btn:hover { background: rgba(52, 211, 153, 0.1); color: #6ee7b7; }
+  #lt-yt-pill.recording #lt-yt-main-btn { color: #ef4444; }
+  #lt-yt-pill.recording #lt-yt-main-btn:hover { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
+
+  #lt-yt-progress {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.85), rgba(45, 212, 191, 0.85));
+    width: 0;
+    transition: width 0.8s linear;
+    display: none;
+  }
+  #lt-yt-pill.recording #lt-yt-progress { display: block; }
+
+  #lt-yt-panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    min-width: 240px;
+    background: rgba(12, 12, 12, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 12px 14px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: none;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #lt-yt-panel.open { display: block; opacity: 1; transform: translateY(0); }
+  #lt-yt-panel .row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+  #lt-yt-panel .row + .row { border-top: 1px dashed rgba(255, 255, 255, 0.05); }
+  #lt-yt-panel label {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.35);
+    min-width: 56px;
+  }
+  #lt-yt-panel select {
+    flex: 1;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.9);
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 0;
+    outline: none;
+    appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='rgba(255,255,255,0.3)' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0 center;
+    padding-right: 16px;
+  }
+  #lt-yt-panel select:focus { border-color: rgba(52, 211, 153, 0.45); }
+  #lt-yt-panel option { background: #141414; color: #fff; }
+`;
+
+function ensureStyles() {
+  if (document.getElementById("lt-yt-style")) return;
+  const s = document.createElement("style");
+  s.id = "lt-yt-style";
+  s.textContent = YT_STYLES;
+  document.head.appendChild(s);
+}
+
+// ---------------------------------------------------------------------------
+// DOM creation
+// ---------------------------------------------------------------------------
+
 function createFloatingButton() {
   if (floatingButton) return;
+  ensureStyles();
 
   floatingButton = document.createElement("div");
   floatingButton.id = "lectranscribe-yt-float";
   floatingButton.innerHTML = `
-    <div id="lt-yt-fab" style="
+    <div id="lt-yt-float" style="
       position: fixed;
-      bottom: 24px;
-      right: 24px;
-      z-index: 99999;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 8px;
-      font-family: 'Pretendard Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      bottom: 20px;
+      right: 20px;
+      z-index: 2147483647;
+      font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     ">
-      <div id="lt-yt-status" style="
-        background: #0a0a0a;
-        border: 1px solid rgba(255,255,255,0.08);
-        border-radius: 12px;
-        padding: 10px 14px;
-        color: rgba(255,255,255,0.85);
-        font-size: 12px;
-        display: none;
-        max-width: 300px;
-        line-height: 1.5;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-        backdrop-filter: blur(12px);
-      "></div>
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <select id="lt-yt-project" style="
-          background: #0a0a0a;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 10px;
-          padding: 6px 8px;
-          color: rgba(255,255,255,0.5);
-          font-size: 10px;
-          outline: none;
-          cursor: pointer;
-          appearance: none;
-          text-align: center;
-          max-width: 100px;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-          backdrop-filter: blur(12px);
-          display: none;
-        ">
-          <option value="">--</option>
-        </select>
-        <select id="lt-yt-speed" style="
-          background: #0a0a0a;
-          border: 1px solid rgba(255,255,255,0.1);
-          border-radius: 10px;
-          padding: 6px 8px;
-          color: rgba(255,255,255,0.7);
-          font-size: 11px;
-          outline: none;
-          cursor: pointer;
-          appearance: none;
-          text-align: center;
-          min-width: 40px;
-          box-shadow: 0 4px 16px rgba(0,0,0,0.4);
-          backdrop-filter: blur(12px);
-        ">
-          <option value="1">1x</option>
-          <option value="2">2x</option>
-          <option value="4">4x</option>
-        </select>
-        <button id="lt-yt-btn" style="
-          width: 52px;
-          height: 52px;
-          border-radius: 16px;
-          background: linear-gradient(135deg, #34d399, #14b8a6);
-          border: none;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 4px 24px rgba(52, 211, 153, 0.3);
-          transition: transform 0.15s, box-shadow 0.15s;
-        " title="LecTranscribe로 전사">
-          <svg id="lt-yt-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 18V5l12-2v13"/>
-            <circle cx="6" cy="18" r="3"/>
-            <circle cx="18" cy="16" r="3"/>
+      <div id="lt-yt-pill" role="group" aria-label="LecTranscribe">
+        <span id="lt-yt-dot" aria-hidden="true"></span>
+        <span id="lt-yt-label">LecTranscribe</span>
+        <span id="lt-yt-countdown">—</span>
+
+        <button id="lt-yt-settings-btn" class="lt-yt-icon-btn" title="설정" aria-label="설정">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
+        <button id="lt-yt-main-btn" class="lt-yt-icon-btn" title="전사 시작" aria-label="전사 시작">
+          <svg id="lt-yt-main-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14"/>
+            <path d="M13 6l6 6-6 6"/>
+          </svg>
+        </button>
+
+        <span id="lt-yt-progress" aria-hidden="true"></span>
+      </div>
+
+      <div id="lt-yt-panel" role="dialog" aria-label="설정">
+        <div class="row">
+          <label>배속</label>
+          <select id="lt-yt-speed">
+            <option value="1">1× · 원본</option>
+            <option value="2">2× · 추천</option>
+            <option value="4">4× · 빠름</option>
+          </select>
+        </div>
+        <div class="row" id="lt-yt-project-row" style="display:none;">
+          <label>프로젝트</label>
+          <select id="lt-yt-project">
+            <option value="">분류 안 함</option>
+          </select>
+        </div>
       </div>
     </div>
   `;
 
   document.body.appendChild(floatingButton);
 
-  // Load saved playback rate into the speed selector
+  // Saved playback rate into speed selector
   const speedSelect = document.getElementById("lt-yt-speed");
   chrome.storage.local.get(["playbackRate"], (result) => {
     speedSelect.value = result.playbackRate || "2";
@@ -137,15 +285,16 @@ function createFloatingButton() {
     chrome.storage.local.set({ playbackRate: speedSelect.value });
   });
 
-  // Load projects from the app
+  // Projects from the app
   const projectSelect = document.getElementById("lt-yt-project");
+  const projectRow = document.getElementById("lt-yt-project-row");
   chrome.storage.local.get(["appUrl", "selectedProjectId"], async (result) => {
     const appUrl = result.appUrl || APP_URL_DEFAULT;
     try {
       const res = await fetch(`${appUrl}/api/projects`, { credentials: "include" });
       const data = await res.json();
       if (data.projects?.length > 0) {
-        projectSelect.style.display = "";
+        projectRow.style.display = "flex";
         data.projects.forEach((p) => {
           const opt = document.createElement("option");
           opt.value = p.id;
@@ -160,53 +309,90 @@ function createFloatingButton() {
     chrome.storage.local.set({ selectedProjectId: projectSelect.value });
   });
 
-  const btn = document.getElementById("lt-yt-btn");
-  btn.addEventListener("mouseenter", () => {
-    btn.style.transform = "scale(1.08)";
-    btn.style.boxShadow = "0 6px 28px rgba(52, 211, 153, 0.45)";
+  // Settings toggle
+  const panel = document.getElementById("lt-yt-panel");
+  const settingsBtn = document.getElementById("lt-yt-settings-btn");
+  settingsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    panel.classList.toggle("open");
   });
-  btn.addEventListener("mouseleave", () => {
-    btn.style.transform = "scale(1)";
-    btn.style.boxShadow = "0 4px 24px rgba(52, 211, 153, 0.3)";
+  document.addEventListener("click", (e) => {
+    if (!floatingButton.contains(e.target)) panel.classList.remove("open");
   });
-  btn.addEventListener("click", handleTranscribeClick);
+
+  const mainBtn = document.getElementById("lt-yt-main-btn");
+  mainBtn.addEventListener("click", handleTranscribeClick);
 }
 
 function setRecordingUI(recording) {
-  const btn = document.getElementById("lt-yt-btn");
-  const icon = document.getElementById("lt-yt-icon");
-  const speed = document.getElementById("lt-yt-speed");
-  if (!btn || !icon) return;
+  const pill = document.getElementById("lt-yt-pill");
+  const mainIcon = document.getElementById("lt-yt-main-icon");
+  const mainBtn = document.getElementById("lt-yt-main-btn");
+  if (!pill || !mainIcon || !mainBtn) return;
 
+  pill.classList.remove("error");
   if (recording) {
-    btn.style.background = "linear-gradient(135deg, #ef4444, #dc2626)";
-    btn.style.boxShadow = "0 4px 24px rgba(239, 68, 68, 0.3)";
-    btn.title = "녹음 중단";
-    icon.innerHTML = '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>';
-    if (speed) speed.style.display = "none";
+    pill.classList.add("recording");
+    mainBtn.title = "녹음 중단";
+    mainBtn.setAttribute("aria-label", "녹음 중단");
+    mainIcon.setAttribute("stroke-width", "2.4");
+    mainIcon.innerHTML = '<rect x="6" y="6" width="12" height="12" rx="2"/>';
   } else {
-    btn.style.background = "linear-gradient(135deg, #34d399, #14b8a6)";
-    btn.style.boxShadow = "0 4px 24px rgba(52, 211, 153, 0.3)";
-    btn.title = "LecTranscribe로 전사";
-    icon.innerHTML = '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>';
-    if (speed) speed.style.display = "";
+    pill.classList.remove("recording");
+    mainBtn.title = "전사 시작";
+    mainBtn.setAttribute("aria-label", "전사 시작");
+    mainIcon.setAttribute("stroke-width", "2.4");
+    mainIcon.innerHTML = '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>';
+    setLabel("LecTranscribe");
+    setCountdown(null);
+    setProgress(0);
   }
 }
 
-function setStatus(text, isError = false) {
-  const el = document.getElementById("lt-yt-status");
+function setLabel(text) {
+  const el = document.getElementById("lt-yt-label");
+  if (el) el.textContent = text;
+}
+
+function setCountdown(text) {
+  const el = document.getElementById("lt-yt-countdown");
   if (!el) return;
-  el.textContent = text;
-  el.style.display = "block";
-  el.style.color = isError ? "#fca5a5" : "rgba(255,255,255,0.85)";
-  el.style.borderColor = isError ? "rgba(239,68,68,0.3)" : "rgba(255,255,255,0.08)";
+  if (text === null || text === undefined) {
+    el.textContent = "—";
+  } else {
+    el.textContent = text;
+  }
+}
+
+function setProgress(pct) {
+  const el = document.getElementById("lt-yt-progress");
+  if (el) el.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+}
+
+function setStatus(text, isError = false) {
+  const pill = document.getElementById("lt-yt-pill");
+  if (!pill) return;
+  if (isError) pill.classList.add("error");
+  else pill.classList.remove("error");
+  setLabel(text);
 }
 
 function hideStatus(delay = 0) {
   setTimeout(() => {
-    const el = document.getElementById("lt-yt-status");
-    if (el) el.style.display = "none";
+    const pill = document.getElementById("lt-yt-pill");
+    if (!pill) return;
+    if (!pill.classList.contains("recording")) {
+      pill.classList.remove("error");
+      setLabel("LecTranscribe");
+    }
   }, delay);
+}
+
+function formatClock(seconds) {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${String(r).padStart(2, "0")}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -274,13 +460,10 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     }
 
     setRecordingUI(true);
-
-    const expectedSec = Math.ceil(duration / playbackRate);
-    setStatus(`${playbackRate}배속 녹음 중 (약 ${Math.ceil(expectedSec / 60)}분 소요)... 중단하려면 버튼을 누르세요.`);
+    setLabel(`${playbackRate}× 녹음 중`);
 
     // Wait for video to finish (with abort support)
     let aborted = false;
-    const startTime = Date.now();
     await new Promise((resolve) => {
       const checkEnd = setInterval(() => {
         const v = document.querySelector("video");
@@ -289,10 +472,10 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
           resolve();
           return;
         }
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
         const remainingReal = Math.max(0, v.duration - v.currentTime);
-        const remainingWall = Math.ceil(remainingReal / playbackRate);
-        setStatus(`녹음 중... ${elapsed}초 경과 / 약 ${remainingWall}초 남음`);
+        const remainingWall = remainingReal / playbackRate;
+        setCountdown(`${formatClock(remainingWall)} 남음`);
+        setProgress((v.currentTime / v.duration) * 100);
       }, 1000);
 
       // Safety timeout
