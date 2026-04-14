@@ -113,17 +113,62 @@ const YT_STYLES = `
   }
   #lt-yt-pill.error #lt-yt-label { color: #fca5a5; }
 
-  #lt-yt-countdown {
+  #lt-yt-status-card {
+    background: rgba(12, 12, 12, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 10px 14px;
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12px;
+    line-height: 1.55;
+    min-width: 220px;
+    max-width: 320px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(22px) saturate(180%);
+    -webkit-backdrop-filter: blur(22px) saturate(180%);
+    display: none;
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #lt-yt-status-card.visible { display: block; opacity: 1; transform: translateY(0); }
+  #lt-yt-status-card .row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  #lt-yt-status-card .row + .row { margin-top: 6px; }
+  #lt-yt-status-card .label {
+    font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.4);
+  }
+  #lt-yt-status-card .value {
     font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
     font-variant-numeric: tabular-nums;
-    font-size: 11px;
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.05);
-    color: rgba(255, 255, 255, 0.75);
-    display: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -0.01em;
   }
-  #lt-yt-pill.recording #lt-yt-countdown { display: inline-block; }
+  #lt-yt-status-card .value.accent { color: #34d399; }
+  #lt-yt-status-card .bar {
+    margin-top: 8px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.07);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  #lt-yt-status-card .bar span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.85), rgba(45, 212, 191, 0.85));
+    transition: width 0.8s linear;
+  }
 
   .lt-yt-icon-btn {
     width: 32px;
@@ -146,17 +191,6 @@ const YT_STYLES = `
   #lt-yt-pill.recording #lt-yt-main-btn { color: #ef4444; }
   #lt-yt-pill.recording #lt-yt-main-btn:hover { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
 
-  #lt-yt-progress {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    height: 2px;
-    background: linear-gradient(90deg, rgba(52, 211, 153, 0.85), rgba(45, 212, 191, 0.85));
-    width: 0;
-    transition: width 0.8s linear;
-    display: none;
-  }
-  #lt-yt-pill.recording #lt-yt-progress { display: block; }
 
   #lt-yt-panel {
     position: absolute;
@@ -233,11 +267,16 @@ function createFloatingButton() {
       right: 20px;
       z-index: 2147483647;
       font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
     ">
+      <div id="lt-yt-status-card" aria-hidden="true"></div>
+
       <div id="lt-yt-pill" role="group" aria-label="LecTranscribe">
         <span id="lt-yt-dot" aria-hidden="true"></span>
         <span id="lt-yt-label">LecTranscribe</span>
-        <span id="lt-yt-countdown">—</span>
 
         <button id="lt-yt-settings-btn" class="lt-yt-icon-btn" title="설정" aria-label="설정">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -252,7 +291,6 @@ function createFloatingButton() {
           </svg>
         </button>
 
-        <span id="lt-yt-progress" aria-hidden="true"></span>
       </div>
 
       <div id="lt-yt-panel" role="dialog" aria-label="설정">
@@ -344,8 +382,7 @@ function setRecordingUI(recording) {
     mainIcon.setAttribute("stroke-width", "2.4");
     mainIcon.innerHTML = '<path d="M5 12h14"/><path d="M13 6l6 6-6 6"/>';
     setLabel("LecTranscribe");
-    setCountdown(null);
-    setProgress(0);
+    hideStatusCard();
   }
 }
 
@@ -354,19 +391,35 @@ function setLabel(text) {
   if (el) el.textContent = text;
 }
 
-function setCountdown(text) {
-  const el = document.getElementById("lt-yt-countdown");
+// Status card above the pill — used for recording progress and toast messages
+function showStatusCard(html) {
+  const el = document.getElementById("lt-yt-status-card");
   if (!el) return;
-  if (text === null || text === undefined) {
-    el.textContent = "—";
-  } else {
-    el.textContent = text;
-  }
+  el.innerHTML = html;
+  requestAnimationFrame(() => el.classList.add("visible"));
 }
 
-function setProgress(pct) {
-  const el = document.getElementById("lt-yt-progress");
-  if (el) el.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+function hideStatusCard() {
+  const el = document.getElementById("lt-yt-status-card");
+  if (!el) return;
+  el.classList.remove("visible");
+  setTimeout(() => {
+    if (!el.classList.contains("visible")) el.innerHTML = "";
+  }, 220);
+}
+
+function renderRecordingCard({ remaining, rate, pct }) {
+  showStatusCard(`
+    <div class="row">
+      <span class="label">남은 시간</span>
+      <span class="value accent">${remaining}</span>
+    </div>
+    <div class="row">
+      <span class="label">배속</span>
+      <span class="value">${rate}×</span>
+    </div>
+    <div class="bar"><span style="width:${Math.max(0, Math.min(100, pct))}%"></span></div>
+  `);
 }
 
 function setStatus(text, isError = false) {
@@ -460,7 +513,14 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     }
 
     setRecordingUI(true);
-    setLabel(`${playbackRate}× 녹음 중`);
+    setLabel("녹음 중");
+
+    // Initial card with placeholder numbers so it animates in immediately
+    renderRecordingCard({
+      remaining: "—:—",
+      rate: playbackRate,
+      pct: 0,
+    });
 
     // Wait for video to finish (with abort support)
     let aborted = false;
@@ -474,8 +534,11 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
         }
         const remainingReal = Math.max(0, v.duration - v.currentTime);
         const remainingWall = remainingReal / playbackRate;
-        setCountdown(`${formatClock(remainingWall)} 남음`);
-        setProgress((v.currentTime / v.duration) * 100);
+        renderRecordingCard({
+          remaining: formatClock(remainingWall),
+          rate: playbackRate,
+          pct: (v.currentTime / v.duration) * 100,
+        });
       }, 1000);
 
       // Safety timeout
@@ -567,10 +630,23 @@ chrome.runtime.onMessage.addListener((message) => {
 // Init: create button on watch pages, react to SPA navigation
 // ---------------------------------------------------------------------------
 
+function setFloatVisible(visible) {
+  const el = document.getElementById("lt-yt-float");
+  if (!el) return;
+  el.style.display = visible ? "flex" : "none";
+}
+
 function init() {
   const videoId = getVideoId();
   if (videoId) {
     createFloatingButton();
+    setFloatVisible(true);
+  } else {
+    // Non-watch YouTube page (home, subscriptions, search, etc.): hide the
+    // pill so it doesn't linger after SPA navigation.
+    setFloatVisible(false);
+    // If a recording was in progress, let it finish — runRecordingFlow owns
+    // its own state machine.
   }
 }
 

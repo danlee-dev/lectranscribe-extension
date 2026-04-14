@@ -46,8 +46,8 @@
     },
     {
       "matches": [
-        "https://www.youtube.com/watch*",
-        "https://www.youtube.com/shorts/*"
+        "https://www.youtube.com/*",
+        "https://youtube.com/*"
       ],
       "js": ["youtube-content.js"],
       "css": ["content.css"]
