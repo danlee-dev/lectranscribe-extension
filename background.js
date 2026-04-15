@@ -3,6 +3,19 @@
 // 2) YouTube tab audio capture via tabCapture + offscreen MediaRecorder
 // 3) Proxy fetch/upload to lectranscribe backend
 
+// One-shot migration: users upgrading from v1.4.x have the old
+// vercel.app URL cached in chrome.storage.local. Move them to the
+// canonical custom domain so next-clicks hit the new site. Runs on
+// install AND update; harmless if the value is already the new one.
+chrome.runtime.onInstalled.addListener(async () => {
+  try {
+    const { appUrl } = await chrome.storage.local.get(["appUrl"]);
+    if (appUrl === "https://lectranscribe.vercel.app") {
+      await chrome.storage.local.set({ appUrl: "https://lectranscribe.com" });
+    }
+  } catch { /* noop */ }
+});
+
 const VIDEO_PATTERN = /korea-cms-object\.cdn\.gov-ntruss\.com\/contents7\/kruniv1001\/([^/]+)\/contents\/media_files\/screen\.mp4/;
 
 // ---------------------------------------------------------------------------
@@ -251,7 +264,7 @@ chrome.action.onClicked.addListener(async (tab) => {
   if (recordingState.has(tab.id)) return;
   actionClickProcessing = true;
   let tokenData = null;
-  let appUrl = "https://lectranscribe.vercel.app";
+  let appUrl = "https://lectranscribe.com";
 
   try {
     // 1. Read video metadata from the page
@@ -470,7 +483,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "GET_PROJECTS") {
     (async () => {
       try {
-        const appUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || "https://lectranscribe.vercel.app";
+        const appUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || "https://lectranscribe.com";
         const res = await fetch(`${appUrl}/api/projects`, { credentials: "include" });
         const data = await res.json();
         sendResponse({ projects: data.projects || [] });
@@ -664,7 +677,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (tabVideos.length > 0) {
         const latest = tabVideos[tabVideos.length - 1];
         const result = await chrome.storage.local.get(["appUrl", "selectedProjectId"]);
-        const appUrl = result.appUrl || "https://lectranscribe.vercel.app";
+        const appUrl = result.appUrl || "https://lectranscribe.com";
         const pid = result.selectedProjectId;
         chrome.tabs.create({
           url: `${appUrl}/dashboard?video=${encodeURIComponent(latest.url)}${pid ? `&project=${pid}` : ""}`,
@@ -676,7 +689,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "OPEN_TRANSCRIBE") {
     (async () => {
-      const appUrl = message.appUrl || "https://lectranscribe.vercel.app";
+      const appUrl = message.appUrl || "https://lectranscribe.com";
       const { selectedProjectId: pid } = await chrome.storage.local.get(["selectedProjectId"]);
       chrome.tabs.create({
         url: `${appUrl}/dashboard?video=${encodeURIComponent(message.videoUrl)}${pid ? `&project=${pid}` : ""}`,

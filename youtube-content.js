@@ -5,7 +5,7 @@ let floatingButton = null;
 let isProcessing = false;
 let abortRecording = null; // set during recording to allow cancellation
 
-const APP_URL_DEFAULT = "https://lectranscribe.vercel.app";
+const APP_URL_DEFAULT = "https://lectranscribe.com";
 const DEFAULT_PLAYBACK_RATE = 2.0;
 
 async function getPlaybackRate() {
