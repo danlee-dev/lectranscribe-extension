@@ -244,6 +244,16 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.status === "loading") {
     syncPopupForTab(tab);
 
+    // Reset the per-tab detected-videos cache whenever the page
+    // starts loading fresh — URL change (navigation) OR `loading`
+    // status (refresh, same URL). Without this, the popup kept
+    // showing videos from a previous LMS lecture page on the same
+    // tab and the badge counter climbed across refreshes.
+    if (changeInfo.url || changeInfo.status === "loading") {
+      chrome.storage.session.remove(`tab_${tabId}`).catch(() => {});
+      chrome.action.setBadgeText({ text: "", tabId }).catch(() => {});
+    }
+
     // If the tab that was being recorded navigated/refreshed, the captured
     // MediaStream is now orphaned (its consumer content script is gone).
     // Force-stop the offscreen recorder so Chrome releases the tabCapture

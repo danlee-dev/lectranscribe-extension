@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LecTranscribe",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "LMS 강의 + YouTube 영상 자동 감지 및 전사",
   "permissions": [
     "webRequest",
