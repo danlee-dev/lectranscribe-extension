@@ -480,15 +480,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // ----- Projects list for popup -----
+  //
+  // Historically this silently swallowed errors into `projects: []`, so
+  // a logged-out or cookie-less user saw "분류 안 함" with no hint that
+  // anything was wrong. Now we surface the HTTP status + the tried URL
+  // so the popup can render "사이트 로그인 필요" when it's really 401,
+  // and the user can tell whether the extension even reached the API.
   if (message.type === "GET_PROJECTS") {
     (async () => {
+      // Normalize stale vercel.app URLs at read time too — the
+      // onInstalled migration only fires on install/update, so users
+      // who never triggered an update still had the old host cached.
+      // Normalizing here makes the fix self-healing on every popup.
+      let appUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || "https://lectranscribe.com";
+      if (/lectranscribe\.vercel\.app/.test(appUrl)) {
+        appUrl = "https://lectranscribe.com";
+        try { await chrome.storage.local.set({ appUrl }); } catch {}
+      }
       try {
-        const appUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || "https://lectranscribe.com";
         const res = await fetch(`${appUrl}/api/projects`, { credentials: "include" });
+        if (res.status === 401 || res.status === 403) {
+          sendResponse({ projects: [], error: "unauthorized", appUrl });
+          return;
+        }
+        if (!res.ok) {
+          sendResponse({ projects: [], error: `http_${res.status}`, appUrl });
+          return;
+        }
         const data = await res.json();
-        sendResponse({ projects: data.projects || [] });
-      } catch {
-        sendResponse({ projects: [] });
+        sendResponse({ projects: data.projects || [], appUrl });
+      } catch (e) {
+        console.error("[LecTranscribe bg] GET_PROJECTS failed:", e);
+        sendResponse({ projects: [], error: "network", appUrl });
       }
     })();
     return true;

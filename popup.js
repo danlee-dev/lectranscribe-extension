@@ -144,6 +144,7 @@ function renderVideos(videos) {
 
     chrome.runtime.sendMessage({ type: "GET_PROJECTS" }, (res) => {
       const projects = res?.projects || [];
+      const error = res?.error;
       if (projects.length > 0) {
         projects.forEach((p) => {
           const opt = document.createElement("option");
@@ -156,8 +157,21 @@ function renderVideos(videos) {
         } else if (result.selectedProjectId) {
           chrome.storage.local.remove(["selectedProjectId"]);
         }
-      } else if (result.selectedProjectId) {
-        chrome.storage.local.remove(["selectedProjectId"]);
+      } else {
+        if (result.selectedProjectId) {
+          chrome.storage.local.remove(["selectedProjectId"]);
+        }
+        // Empty + error → replace the default "분류 안 함" option with
+        // a hint so the user knows whether it's a login issue vs a
+        // "genuinely no projects" state. Keeps the original empty
+        // option as a fallback for the "truly empty" case.
+        if (error === "unauthorized") {
+          const hint = projectSelect.querySelector("option[value='']");
+          if (hint) hint.textContent = "사이트 로그인 필요";
+        } else if (error === "network" || (error && error.startsWith("http_"))) {
+          const hint = projectSelect.querySelector("option[value='']");
+          if (hint) hint.textContent = "연결 실패 · 앱 URL 확인";
+        }
       }
     });
   });
