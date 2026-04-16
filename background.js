@@ -64,6 +64,44 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 // ---------------------------------------------------------------------------
+// Dashboard tab reuse
+// ---------------------------------------------------------------------------
+//
+// When the user transcribes a new video from the extension (YouTube or
+// LMS), we used to open a fresh tab every single time. Five lectures
+// in a row = five tabs stacked up. The user expects the existing
+// dashboard tab to pick up the new transcription instead, the same
+// way Gmail/Slack/Notion do with single-window apps.
+//
+// Strategy: query for any open tab already pointing at the dashboard
+// path (any of our known hosts), update its URL + focus it. Fall back
+// to opening a new tab if none exists. host_permissions already covers
+// these URLs so no extra manifest permission is needed.
+async function openOrFocusDashboard(url) {
+  const patterns = [
+    "https://lectranscribe.com/dashboard*",
+    "https://www.lectranscribe.com/dashboard*",
+    "https://lectranscribe.vercel.app/dashboard*",
+  ];
+  try {
+    const tabs = await chrome.tabs.query({ url: patterns });
+    if (tabs && tabs.length > 0) {
+      // Prefer the currently-active dashboard tab if the user happens
+      // to have one focused; otherwise take the first match.
+      const target = tabs.find((tab) => tab.active) || tabs[0];
+      await chrome.tabs.update(target.id, { url, active: true });
+      if (target.windowId !== undefined) {
+        try { await chrome.windows.update(target.windowId, { focused: true }); } catch { /* noop */ }
+      }
+      return;
+    }
+  } catch {
+    // Query failed (unusual, but fall through) — we'll just open a new tab.
+  }
+  chrome.tabs.create({ url });
+}
+
+// ---------------------------------------------------------------------------
 // LMS auto-detect (unchanged)
 // ---------------------------------------------------------------------------
 
@@ -702,9 +740,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const result = await chrome.storage.local.get(["appUrl", "selectedProjectId"]);
         const appUrl = result.appUrl || "https://lectranscribe.com";
         const pid = result.selectedProjectId;
-        chrome.tabs.create({
-          url: `${appUrl}/dashboard?video=${encodeURIComponent(latest.url)}${pid ? `&project=${pid}` : ""}`,
-        });
+        const url = `${appUrl}/dashboard?video=${encodeURIComponent(latest.url)}${pid ? `&project=${pid}` : ""}`;
+        openOrFocusDashboard(url);
       }
     })();
     return true;
@@ -714,11 +751,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       const appUrl = message.appUrl || "https://lectranscribe.com";
       const { selectedProjectId: pid } = await chrome.storage.local.get(["selectedProjectId"]);
-      chrome.tabs.create({
-        url: `${appUrl}/dashboard?video=${encodeURIComponent(message.videoUrl)}${pid ? `&project=${pid}` : ""}`,
-      });
+      const url = `${appUrl}/dashboard?video=${encodeURIComponent(message.videoUrl)}${pid ? `&project=${pid}` : ""}`;
+      openOrFocusDashboard(url);
     })();
     return true;
+  }
+
+  // Generic "open this URL on the site", used by the popup's
+  // "프로젝트 관리하기" link so it reuses an existing dashboard tab
+  // via openOrFocusDashboard instead of stacking new ones.
+  if (message.type === "OPEN_URL") {
+    if (message.url) openOrFocusDashboard(message.url);
+    return false;
   }
 
   // ----- Tab capture recording -----

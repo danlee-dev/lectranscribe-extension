@@ -364,12 +364,190 @@
       background: var(--surface);
       color: var(--t1);
     }
+
+    /* ---- Project chip (top-level, not settings) ----
+       Switching project is a frequent pre-transcribe action, so it
+       lives right under the rail instead of buried in Settings. The
+       chip reads as a single pill with a small folder-ish glyph on
+       the left, the current project name in the middle, and a
+       chevron on the right. Click opens a native-feeling menu
+       positioned below the chip. */
+    .project-bar {
+      position: relative;
+      z-index: 3;
+      padding: 0 18px 8px;
+    }
+    .project-chip {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      background: rgba(255,255,255,0.035);
+      border: 1px solid transparent;
+      border-radius: 9px;
+      color: var(--t2);
+      font-family: inherit;
+      font-size: 11.5px;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, color 0.15s;
+      text-align: left;
+    }
+    .project-chip:hover {
+      background: rgba(255,255,255,0.06);
+      color: var(--t1);
+    }
+    .project-chip.active {
+      background: rgba(255,255,255,0.055);
+      color: var(--t1);
+      border-color: rgba(255,255,255,0.06);
+    }
+    .project-chip .chip-label {
+      font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      font-size: 9px;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--t3);
+      flex-shrink: 0;
+    }
+    .project-chip .chip-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .project-chip .chip-name.muted { color: var(--t3); font-weight: 400; }
+    .project-chip .chip-chevron {
+      width: 10px; height: 10px;
+      flex-shrink: 0;
+      opacity: 0.5;
+      transition: transform 0.18s, opacity 0.15s;
+    }
+    .project-chip.open .chip-chevron { transform: rotate(180deg); opacity: 0.95; }
+    .project-chip:hover .chip-chevron { opacity: 0.95; }
+
+    .project-menu {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      top: calc(100% - 4px);
+      background: rgba(16,16,16,0.98);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 10px;
+      box-shadow: 0 14px 40px -8px rgba(0,0,0,0.8), inset 0 1px 0 rgba(255,255,255,0.04);
+      overflow: hidden;
+      z-index: 10;
+      max-height: 280px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      transform: translateY(-4px);
+      pointer-events: none;
+      transition: opacity 0.14s, transform 0.14s;
+    }
+    .project-menu.open {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+    .project-menu-scroll {
+      overflow-y: auto;
+      max-height: 220px;
+      padding: 4px;
+    }
+    .project-menu-option {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 8px 10px;
+      background: transparent;
+      border: none;
+      border-radius: 6px;
+      color: var(--t2);
+      font-family: inherit;
+      font-size: 12px;
+      letter-spacing: -0.01em;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      text-align: left;
+    }
+    .project-menu-option:hover {
+      background: rgba(255,255,255,0.05);
+      color: var(--t1);
+    }
+    .project-menu-option.selected { color: var(--t1); background: rgba(255,255,255,0.04); }
+    .project-menu-option .name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .project-menu-option.none .name { color: var(--t3); font-style: normal; }
+    .project-menu-option .check {
+      width: 12px; height: 12px;
+      color: var(--accent);
+      flex-shrink: 0;
+      opacity: 0;
+    }
+    .project-menu-option.selected .check { opacity: 1; }
+    .project-menu-empty {
+      padding: 18px 12px;
+      text-align: center;
+      color: var(--t3);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+    .project-menu-footer {
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding: 4px;
+    }
+    .project-menu-footer .project-menu-option {
+      font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      font-size: 10.5px;
+      letter-spacing: 0.04em;
+      color: var(--t3);
+    }
+    .project-menu-footer .project-menu-option:hover {
+      color: var(--accent);
+      background: rgba(52,211,153,0.06);
+    }
   </style>
 </head>
 <body>
   <div class="rail">
     <span class="brand">LecTranscribe</span>
     <span class="status-badge inactive" id="status" data-i18n="popupStandby">대기중</span>
+  </div>
+
+  <div class="project-bar">
+    <button class="project-chip" id="project-chip" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <svg class="chip-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.5;flex-shrink:0;">
+        <path d="M2.25 12.75V12A2.25 2.25 0 0 1 4.5 9.75h15A2.25 2.25 0 0 1 21.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 0 0-1.061-.44H4.5A2.25 2.25 0 0 0 2.25 6v12a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9a2.25 2.25 0 0 0-2.25-2.25h-5.379a1.5 1.5 0 0 1-1.06-.44Z" />
+      </svg>
+      <span class="chip-label" data-i18n="popupProject">프로젝트</span>
+      <span class="chip-name muted" id="project-chip-name" data-i18n="popupProjectNone">분류 안 함</span>
+      <svg class="chip-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </button>
+    <div class="project-menu" id="project-menu" role="listbox">
+      <div class="project-menu-scroll" id="project-menu-scroll">
+        <!-- options injected here -->
+      </div>
+      <div class="project-menu-footer">
+        <button type="button" class="project-menu-option" id="project-menu-new">
+          <span class="name" data-i18n="popupProjectManage">프로젝트 관리하기</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.6;">
+            <path d="M7 17L17 7M17 7H7M17 7V17" />
+          </svg>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="content" id="content">
@@ -397,12 +575,6 @@
         <option value="1" data-i18n="popupRate1">1× · 원본 품질</option>
         <option value="2" selected data-i18n="popupRate2">2× · 추천</option>
         <option value="4" data-i18n="popupRate4">4× · 빠름</option>
-      </select>
-    </div>
-    <div class="settings-row" id="project-row">
-      <label data-i18n="popupProject">프로젝트</label>
-      <select id="project-select">
-        <option value="" data-i18n="popupProjectNone">분류 안 함</option>
       </select>
     </div>
     <div class="settings-row" id="lang-row">
