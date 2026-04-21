@@ -4,6 +4,25 @@
 let floatingButton = null;
 let isProcessing = false;
 let abortRecording = null; // set during recording to allow cancellation
+// Live transcript_id + app URL while recording — needed by the pagehide
+// beacon below so we can mark the row as failed immediately if the user
+// closes the tab mid-recording (otherwise it lingers at status=processing
+// for ~10 min until the reaper picks it up).
+let liveTranscriptId = null;
+let liveAppUrl = null;
+
+// Pagehide fires on tab close + back/forward nav. We beacon a PATCH to
+// /api/transcripts/:id (status=failed) so the row doesn't sit stale.
+// navigator.sendBeacon survives the page teardown that a fetch wouldn't.
+window.addEventListener("pagehide", () => {
+  if (!liveTranscriptId || !liveAppUrl) return;
+  try {
+    const url = `${liveAppUrl}/api/transcripts/${liveTranscriptId}`;
+    const payload = JSON.stringify({ status: "failed" });
+    const blob = new Blob([payload], { type: "application/json" });
+    navigator.sendBeacon(url, blob);
+  } catch { /* best-effort */ }
+});
 
 const APP_URL_DEFAULT = "https://lectranscribe.com";
 const DEFAULT_PLAYBACK_RATE = 2.0;
@@ -564,13 +583,60 @@ function waitForUnmute(videoEl) {
 // Background message helpers
 // ---------------------------------------------------------------------------
 
+// When Chrome auto-updates the extension, every active content script loses
+// its connection to the background service worker. `chrome.runtime.id` goes
+// undefined and sendMessage throws synchronously with "Extension context
+// invalidated". We detect this one time (to avoid throwing on every tick
+// of ad-poll / progress-poll) and gracefully stop in-flight work.
+let extensionContextDead = false;
+
+function isExtensionAlive() {
+  try { return !!(chrome && chrome.runtime && chrome.runtime.id); }
+  catch { return false; }
+}
+
+function markContextDead() {
+  if (extensionContextDead) return;
+  extensionContextDead = true;
+  console.warn("[LecTranscribe] extension context invalidated — stopping timers");
+  // Surface a soft instruction to the user instead of letting the page
+  // sit with stale card state forever. The message is brief so it doesn't
+  // dominate the tab if the user never even triggered recording.
+  try {
+    setStatus("확장 프로그램이 업데이트됐어요. 새로고침 후 다시 시도해주세요", true);
+    hideStatus(8000);
+  } catch { /* DOM may also be mid-teardown */ }
+}
+
 function bgSend(message) {
+  if (extensionContextDead || !isExtensionAlive()) {
+    markContextDead();
+    return Promise.reject(new Error("Extension context invalidated"));
+  }
   return new Promise((resolve, reject) => {
-    chrome.runtime.sendMessage(message, (res) => {
-      if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-      if (!res) return reject(new Error("No response from background"));
-      resolve(res);
-    });
+    try {
+      chrome.runtime.sendMessage(message, (res) => {
+        const lastErr = chrome.runtime.lastError;
+        if (lastErr) {
+          const msg = String(lastErr.message || "");
+          if (msg.includes("context invalidated") || msg.includes("Extension context")) {
+            markContextDead();
+          }
+          return reject(new Error(msg || "runtime error"));
+        }
+        if (!res) return reject(new Error("No response from background"));
+        resolve(res);
+      });
+    } catch (e) {
+      // Synchronous throw happens on hard context loss (e.g. extension
+      // uninstalled). chrome.runtime.sendMessage throws rather than
+      // calling back with lastError in that case.
+      const msg = String(e?.message || e);
+      if (msg.includes("context invalidated") || msg.includes("Extension context")) {
+        markContextDead();
+      }
+      reject(new Error(msg));
+    }
   });
 }
 
@@ -617,6 +683,10 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
 
   try {
     const { transcriptId, userId, uploadToken, uploadEndpoint, deductCredit } = tokenData;
+    // Stash for the pagehide beacon so a tab close mid-recording gets
+    // the row flipped to failed immediately.
+    liveTranscriptId = transcriptId;
+    liveAppUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || APP_URL_DEFAULT;
     if (!uploadEndpoint) throw new Error("백엔드 주소를 받지 못했어요");
 
     const playbackRate = await getPlaybackRate();
@@ -670,6 +740,15 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     let totalAdMs = 0;
     let adStartAt = 0;
     adPoll = setInterval(async () => {
+      // If Chrome reloaded the extension mid-session, every subsequent
+      // bgSend would throw. Stop polling and let the user refresh.
+      if (extensionContextDead || !isExtensionAlive()) {
+        clearInterval(adPoll);
+        adPoll = null;
+        markContextDead();
+        if (abortRecording) abortRecording();
+        return;
+      }
       const player = document.querySelector(".html5-video-player");
       const showing = !!(player && player.classList.contains("ad-showing"));
       if (showing && !adActive) {
@@ -691,6 +770,18 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
         // chosen speed. Defensive even for 1x (harmless no-op).
         if (v2) v2.playbackRate = playbackRate;
         try { await bgSend({ type: "LT_RESUME_RECORDING" }); } catch {}
+        // Immediate card repaint so the user sees "recording again" right
+        // away. Previously the card was stuck on "광고 일시정지" for up
+        // to 1 second until the next checkEnd tick, which felt broken.
+        if (v2 && Number.isFinite(v2.duration) && v2.duration > 0) {
+          const remainingReal = Math.max(0, v2.duration - v2.currentTime);
+          const remainingWall = remainingReal / playbackRate;
+          renderRecordingCard({
+            remaining: formatClock(remainingWall),
+            rate: playbackRate,
+            pct: (v2.currentTime / v2.duration) * 100,
+          });
+        }
       }
     }, 500);
 
@@ -802,6 +893,11 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     isProcessing = false;
     abortRecording = null;
     setRecordingUI(false);
+    // Clear the pagehide-beacon target — we're either done or the error
+    // path already marked the row failed. Don't re-fail a completed row
+    // if the user closes the tab after a success toast.
+    liveTranscriptId = null;
+    liveAppUrl = null;
   }
 }
 

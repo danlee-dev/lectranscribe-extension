@@ -336,12 +336,17 @@ chrome.action.onClicked.addListener(async (tab) => {
     }).catch(() => {});
 
     const { selectedProjectId } = await chrome.storage.local.get(["selectedProjectId"]);
-    const tokenRes = await fetch(`${appUrl}/api/transcribe-upload-token`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoUrl, title: meta.title, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) }),
-    });
+
+    async function requestToken() {
+      return fetch(`${appUrl}/api/transcribe-upload-token`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoUrl, title: meta.title, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) }),
+      });
+    }
+
+    let tokenRes = await requestToken();
 
     if (tokenRes.status === 401) {
       chrome.tabs.create({ url: `${appUrl}/auth/login` });
@@ -350,9 +355,49 @@ chrome.action.onClicked.addListener(async (tab) => {
     if (tokenRes.status === 402) {
       throw new Error("크레딧이 부족해요. LecTranscribe에서 충전해주세요.");
     }
+    // 409 already_in_progress: a prior recording for the same video URL
+    // left a row at status=processing (most commonly: browser refresh or
+    // extension auto-update aborted the in-flight session). The reaper
+    // would clean it up in ~10 min but the user is clicking now, so we
+    // auto-fail the stale row and retry the token request once. If the
+    // retry ALSO 409s, the row is genuinely live elsewhere — surface a
+    // friendly message instead of a raw JSON dump.
+    if (tokenRes.status === 409) {
+      let stale = null;
+      try { stale = await tokenRes.json(); } catch {}
+      const staleId = stale?.transcriptId;
+      if (staleId) {
+        console.log("[LecTranscribe bg] recovering stale processing row", staleId);
+        try {
+          await fetch(`${appUrl}/api/transcripts/${staleId}`, {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "failed" }),
+          });
+        } catch (e) {
+          console.warn("[LecTranscribe bg] stale PATCH failed:", e);
+        }
+        // Small delay so the DB commit propagates before the index check
+        // on the retry. Postgres is fast but Supabase can have ~100ms
+        // replication lag on read-your-writes in edge regions.
+        await new Promise((r) => setTimeout(r, 300));
+        tokenRes = await requestToken();
+      }
+      if (tokenRes.status === 409) {
+        throw new Error("이 영상은 이미 전사 중이에요. 잠시 후 다시 시도해주세요.");
+      }
+    }
     if (!tokenRes.ok) {
-      const errText = await tokenRes.text().catch(() => "");
-      throw new Error(`토큰 발행 실패: ${errText.slice(0, 150)}`);
+      // Try to parse a structured error from the API; fall back to a
+      // generic message so the user never sees a raw JSON payload.
+      let msg = "전사를 시작하지 못했어요. 잠시 후 다시 시도해주세요.";
+      try {
+        const errJson = await tokenRes.clone().json();
+        if (errJson?.message) msg = String(errJson.message);
+        else if (errJson?.error) msg = String(errJson.error);
+      } catch { /* non-JSON body, keep generic */ }
+      throw new Error(msg);
     }
     const tokenData = await tokenRes.json();
 
