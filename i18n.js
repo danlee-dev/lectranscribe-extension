@@ -59,6 +59,7 @@
       ytCardRemaining: "남은 시간",
       ytCardRate: "배속",
       ytCardClockPlaceholder: "—:—",
+      ytAdPaused: "광고 구간 — 일시정지",
 
       // Mute gate
       ytMuteHeader: "주의",
@@ -119,6 +120,7 @@
       ytCardRemaining: "Time left",
       ytCardRate: "Rate",
       ytCardClockPlaceholder: "—:—",
+      ytAdPaused: "Ad break — paused",
 
       ytMuteHeader: "Warning",
       ytMuteTitle: "YouTube player muted",

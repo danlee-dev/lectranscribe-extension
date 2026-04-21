@@ -155,6 +155,9 @@ const YT_STYLES = `
     letter-spacing: -0.01em;
   }
   #lt-yt-status-card .value.accent { color: #34d399; }
+  /* Amber-tinted state while an ad is playing — signals to the user
+     that recording is deliberately paused (not frozen/broken). */
+  #lt-yt-status-card .value.accent.ad-paused { color: #fbbf24; font-size: 13px; }
   #lt-yt-status-card .bar {
     margin-top: 8px;
     height: 2px;
@@ -450,11 +453,19 @@ function hideStatusCard() {
   }, 220);
 }
 
-function renderRecordingCard({ remaining, rate, pct }) {
+function renderRecordingCard({ remaining, rate, pct, adPaused = false }) {
+  // During an ad break the "남은 시간" label would mis-read as "time still
+  // ticking" — swap it for the ad-paused message and tint the accent amber
+  // so the user understands we've deliberately stopped capturing audio
+  // (not broken). Progress bar stays at its last content position.
+  const valueClass = adPaused ? "value accent ad-paused" : "value accent";
+  const remainingLabel = adPaused
+    ? (LT_I18N.t("ytAdPaused") || "Ad break — paused")
+    : LT_I18N.t("ytCardRemaining");
   showStatusCard(`
     <div class="row">
-      <span class="label">${LT_I18N.t("ytCardRemaining")}</span>
-      <span class="value accent">${remaining}</span>
+      <span class="label">${adPaused ? "" : remainingLabel}</span>
+      <span class="${valueClass}">${remaining}</span>
     </div>
     <div class="row">
       <span class="label">${LT_I18N.t("ytCardRate")}</span>
@@ -599,6 +610,11 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
   if (isProcessing) return;
   isProcessing = true;
 
+  // Declared outside try so the finally can clean up even if runtime
+  // throws before we enter the wait loop. Otherwise an early error
+  // leaves a 500ms setInterval firing forever on the tab.
+  let adPoll = null;
+
   try {
     const { transcriptId, userId, uploadToken, uploadEndpoint, deductCredit } = tokenData;
     if (!uploadEndpoint) throw new Error("백엔드 주소를 받지 못했어요");
@@ -637,6 +653,47 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
       pct: 0,
     });
 
+    // Ad-awareness for non-Premium users. YouTube overlays the same video
+    // element with `.ad-showing` class on `.html5-video-player` during ad
+    // playback and forcibly resets `video.playbackRate = 1`. Without this
+    // guard, we'd:
+    //   1) capture ad audio into the recording,
+    //   2) record that ad audio at 1x while backend metadata says 2x
+    //      (slow_down_audio then mangles the ad into unintelligible 0.5x),
+    //   3) keep the progress countdown running even though content's
+    //      `currentTime` stalls during the ad.
+    // Fix: poll the class, pause the MediaRecorder across ad breaks, and
+    // restore playbackRate once the ad ends. `currentTime` naturally stalls
+    // during ads so the existing countdown already behaves correctly for
+    // that aspect — we just avoid recording the bytes.
+    let adActive = false;
+    let totalAdMs = 0;
+    let adStartAt = 0;
+    adPoll = setInterval(async () => {
+      const player = document.querySelector(".html5-video-player");
+      const showing = !!(player && player.classList.contains("ad-showing"));
+      if (showing && !adActive) {
+        adActive = true;
+        adStartAt = performance.now();
+        try { await bgSend({ type: "LT_PAUSE_RECORDING" }); } catch {}
+        renderRecordingCard({
+          remaining: LT_I18N.t("ytAdPaused"),
+          rate: playbackRate,
+          pct: videoEl ? (videoEl.currentTime / videoEl.duration) * 100 : 0,
+          adPaused: true,
+        });
+      } else if (!showing && adActive) {
+        adActive = false;
+        totalAdMs += performance.now() - adStartAt;
+        const v2 = document.querySelector("video");
+        // YouTube resets playbackRate during ads — restore it so the
+        // moment content resumes, playback continues at the user's
+        // chosen speed. Defensive even for 1x (harmless no-op).
+        if (v2) v2.playbackRate = playbackRate;
+        try { await bgSend({ type: "LT_RESUME_RECORDING" }); } catch {}
+      }
+    }, 500);
+
     // Wait for video to finish (with abort support)
     let aborted = false;
     await new Promise((resolve) => {
@@ -647,6 +704,10 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
           resolve();
           return;
         }
+        // During an ad, don't overwrite the "광고 일시정지" card with a
+        // stale countdown — currentTime won't advance anyway, and the
+        // ad polling loop is responsible for the card in that state.
+        if (adActive) return;
         const remainingReal = Math.max(0, v.duration - v.currentTime);
         const remainingWall = remainingReal / playbackRate;
         renderRecordingCard({
@@ -656,17 +717,35 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
         });
       }, 1000);
 
-      // Safety timeout
-      const safetyTimer = setTimeout(() => {
+      // Safety timeout scales with ad breaks: a long video with 3 mid-
+      // rolls could legitimately exceed `duration * 1.2` wall-clock.
+      // We add twice the observed ad time as a buffer and re-arm the
+      // timer every time an ad resolves, so ad-heavy sessions don't
+      // trip the safety prematurely. Pure wall-clock ceiling stays at
+      // duration * 2 (2x user-selected duration) as the hard cap.
+      const hardCapMs = duration * 1000 * 2;
+      const startedAt = performance.now();
+      let safetyTimer = setTimeout(() => {
         clearInterval(checkEnd);
         resolve();
-      }, duration * 1000 * 1.2);
+      }, Math.min(hardCapMs, duration * 1000 * 1.2));
+      const refreshSafety = setInterval(() => {
+        const elapsed = performance.now() - startedAt;
+        const budget = Math.min(hardCapMs, duration * 1000 * 1.2 + totalAdMs * 2);
+        if (elapsed >= budget) {
+          clearTimeout(safetyTimer);
+          clearInterval(checkEnd);
+          clearInterval(refreshSafety);
+          resolve();
+        }
+      }, 5000);
 
       // Abort handler
       abortRecording = () => {
         aborted = true;
         clearInterval(checkEnd);
         clearTimeout(safetyTimer);
+        clearInterval(refreshSafety);
         resolve();
       };
     });
@@ -719,6 +798,7 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     hideStatus(6000);
     try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
   } finally {
+    if (adPoll) { clearInterval(adPoll); adPoll = null; }
     isProcessing = false;
     abortRecording = null;
     setRecordingUI(false);

@@ -776,6 +776,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // ----- Tab capture recording -----
+  // Pause / resume the offscreen MediaRecorder. Sent by youtube-content.js
+  // when it detects YouTube ad playback so we don't mix 1x ad audio into
+  // the 2x lecture audio. Both handlers are best-effort — an unexpected
+  // state (e.g. ad message fires after recording already ended) never
+  // surfaces as a hard failure.
+  if (message.type === "LT_PAUSE_RECORDING") {
+    (async () => {
+      try {
+        const res = await chrome.runtime.sendMessage({
+          target: "offscreen",
+          type: "pause-recording",
+        });
+        sendResponse({ ok: !!res?.ok });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+  if (message.type === "LT_RESUME_RECORDING") {
+    (async () => {
+      try {
+        const res = await chrome.runtime.sendMessage({
+          target: "offscreen",
+          type: "resume-recording",
+        });
+        sendResponse({ ok: !!res?.ok });
+      } catch (e) {
+        sendResponse({ ok: false, error: String(e) });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === "LT_STOP_RECORDING") {
     const tabId = sender.tab?.id;
     if (!tabId) {

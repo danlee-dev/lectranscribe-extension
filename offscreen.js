@@ -23,6 +23,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((e) => sendResponse({ ok: false, error: String(e) }));
     return true;
   }
+
+  // Ad-aware pause/resume so non-Premium users don't get ad audio mixed
+  // into their lecture recording. youtube-content.js detects
+  // `.html5-video-player.ad-showing` and sends these messages. When
+  // paused, MediaRecorder stops emitting chunks but the captured tab
+  // stream stays open — resume() picks right back up without a gap.
+  if (message.type === "pause-recording") {
+    try {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.pause();
+        console.log("[LecTranscribe offscreen] recording paused (ad)");
+      }
+      sendResponse({ ok: true, state: mediaRecorder?.state || "none" });
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) });
+    }
+    return false;
+  }
+
+  if (message.type === "resume-recording") {
+    try {
+      if (mediaRecorder && mediaRecorder.state === "paused") {
+        mediaRecorder.resume();
+        console.log("[LecTranscribe offscreen] recording resumed");
+      }
+      sendResponse({ ok: true, state: mediaRecorder?.state || "none" });
+    } catch (e) {
+      sendResponse({ ok: false, error: String(e) });
+    }
+    return false;
+  }
 });
 
 async function startRecording(streamId) {
