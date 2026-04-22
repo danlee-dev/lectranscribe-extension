@@ -680,6 +680,12 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
   // throws before we enter the wait loop. Otherwise an early error
   // leaves a 500ms setInterval firing forever on the tab.
   let adPoll = null;
+  // Heartbeat keeps the pre-pipeline row alive while the browser is
+  // still recording. Without this, the v26 reaper flips the row to
+  // `failed` after 10 min of no activity — which the extension would
+  // hit reliably for any video longer than ~5 min at 2x. See
+  // /api/transcripts/:id/heartbeat for the endpoint side.
+  let heartbeatPoll = null;
 
   try {
     const { transcriptId, userId, uploadToken, uploadEndpoint, deductCredit } = tokenData;
@@ -687,6 +693,20 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     // the row flipped to failed immediately.
     liveTranscriptId = transcriptId;
     liveAppUrl = (await chrome.storage.local.get(["appUrl"])).appUrl || APP_URL_DEFAULT;
+
+    // Fire a heartbeat immediately so the row's heartbeat_at leads the
+    // reaper's 10-min idle threshold from second 0, not from the first
+    // 30s-interval tick. Subsequent heartbeats fire on the interval.
+    const pingHeartbeat = () => {
+      if (!liveTranscriptId || !liveAppUrl) return;
+      fetch(`${liveAppUrl}/api/transcripts/${liveTranscriptId}/heartbeat`, {
+        method: "POST",
+        credentials: "include",
+      }).catch(() => { /* transient net blips are fine — next tick retries */ });
+    };
+    pingHeartbeat();
+    heartbeatPoll = setInterval(pingHeartbeat, 30000);
+
     if (!uploadEndpoint) throw new Error("백엔드 주소를 받지 못했어요");
 
     const playbackRate = await getPlaybackRate();
@@ -890,6 +910,7 @@ async function runRecordingFlow(tokenData, videoUrl, duration) {
     try { await bgSend({ type: "LT_STOP_RECORDING" }); } catch {}
   } finally {
     if (adPoll) { clearInterval(adPoll); adPoll = null; }
+    if (heartbeatPoll) { clearInterval(heartbeatPoll); heartbeatPoll = null; }
     isProcessing = false;
     abortRecording = null;
     setRecordingUI(false);
