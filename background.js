@@ -16,7 +16,18 @@ chrome.runtime.onInstalled.addListener(async () => {
   } catch { /* noop */ }
 });
 
-const VIDEO_PATTERN = /korea-cms-object\.cdn\.gov-ntruss\.com\/contents7\/kruniv1001\/([^/]+)\/contents\/media_files\/screen\.mp4/;
+// Match any standalone video container under /media_files/ (optionally
+// nested one or more subdirs deep — e.g. .../media_files/mobile/ssmovie.mp4).
+// Extension-based instead of hardcoded filename so new LMS packagers that
+// ship the lecture as ssmovie.mp4 / camera.mp4 / whatever.m4v keep working
+// without another release. HLS (.m3u8 / .ts / .m4s) intentionally excluded
+// — segmented formats need manifest-level reassembly we don't do.
+const VIDEO_PATTERN = /korea-cms-object\.cdn\.gov-ntruss\.com\/contents7\/kruniv1001\/([^/]+)\/contents\/media_files\/(?:[^?]+\/)?([^?/]+)\.(?:mp4|m4v|mov|webm|mkv)(?:$|\?)/i;
+
+// Non-lecture clips baked into every LMS package — intro animations,
+// preloaders, school logos, etc. Filtered pre-dedup so they don't eat the
+// slot for the real lecture video on the same contentId.
+const EXCLUDED_BASENAMES = /^(?:preloader|intro|outro|trailer|logo|bumper|watermark)$/i;
 
 // ---------------------------------------------------------------------------
 // YouTube audio URL capture via webRequest
@@ -119,8 +130,13 @@ async function handleVideoDetected(url, tabId) {
   if (!match) return;
 
   const contentId = match[1];
+  const baseName = match[2];
+  if (EXCLUDED_BASENAMES.test(baseName)) return;
+
   const tabVideos = await getVideosForTab(tabId);
 
+  // contentId-level dedup swallows HTTP Range follow-ups (the player
+  // fires 3+ requests per file: probe, moov seek, playback stream).
   if (tabVideos.find((v) => v.contentId === contentId)) return;
 
   const cleanUrl = url.split("?")[0];
@@ -138,9 +154,13 @@ async function handleVideoDetected(url, tabId) {
   }).catch(() => {});
 }
 
+// Host-level URL filter instead of per-filename — WebRequest URL patterns
+// don't support extension alternation so we'd otherwise need one listener
+// per mp4/mov/webm/... permutation. Broader listener + VIDEO_PATTERN
+// regex inside handleVideoDetected is the standard way to express this.
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => { handleVideoDetected(details.url, details.tabId); },
-  { urls: ["*://korea-cms-object.cdn.gov-ntruss.com/*screen.mp4*"] }
+  { urls: ["*://korea-cms-object.cdn.gov-ntruss.com/*"] }
 );
 
 chrome.webRequest.onCompleted.addListener(
