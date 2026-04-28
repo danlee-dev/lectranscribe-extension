@@ -236,6 +236,103 @@ async function forceCleanupRecording() {
   stopKeepAlive();
 }
 
+// Tab navigated / closed mid-recording. Instead of dropping the captured
+// audio on the floor (which left the row stuck at status='processing' and
+// lost everything the user already played), grab whatever MediaRecorder
+// has buffered and POST it to /api/transcribe/upload with partial=true.
+// The pipeline runs normally on the partial audio; the result page shows
+// a "부분 녹음" badge so the user knows the transcript only covers up to
+// the abandonment point.
+//
+// reason is one of "navigation" | "tab_closed" | "stale_replaced" — only
+// affects the log line right now, but useful for ops debugging.
+async function stopAndUploadPartial(tabId, reason) {
+  const state = recordingState.get(tabId);
+  if (!state) {
+    // No context — fall back to the old kill-everything path.
+    await forceCleanupRecording();
+    return;
+  }
+  // Remove from map FIRST so a follow-up tab event doesn't double-trigger
+  // this on the same recording.
+  recordingState.delete(tabId);
+
+  let stopRes = null;
+  try {
+    stopRes = await chrome.runtime.sendMessage({ target: "offscreen", type: "stop-recording" });
+  } catch (e) {
+    console.warn("[LecTranscribe bg] partial stop message failed:", e);
+  }
+  await closeOffscreenDocument();
+  stopKeepAlive();
+
+  const transcriptId = state.transcriptId;
+  if (!transcriptId) return;
+
+  // Convert offscreen's base64 → ArrayBuffer. If anything's missing
+  // (offscreen died, blob empty, etc.) flag the row failed so the credit
+  // refunds via the PATCH route's RPC trigger and the user isn't charged
+  // for an abandoned recording that captured nothing useful.
+  let fileBuffer = null;
+  if (stopRes?.ok && stopRes.base64) {
+    try {
+      const binary = atob(stopRes.base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      fileBuffer = bytes.buffer;
+    } catch (e) {
+      console.warn("[LecTranscribe bg] partial blob decode failed:", e);
+    }
+  }
+
+  const MIN_USEFUL_BYTES = 10 * 1024;  // 10KB — anything smaller is silence/garbage
+  if (!fileBuffer || fileBuffer.byteLength < MIN_USEFUL_BYTES) {
+    console.log("[LecTranscribe bg] partial upload skipped (no audio) reason=" + reason + " id=" + transcriptId);
+    fetch(`${state.appUrl}/api/transcripts/${transcriptId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "failed" }),
+    }).catch(() => {});
+    return;
+  }
+
+  console.log("[LecTranscribe bg] partial upload start reason=" + reason + " id=" + transcriptId + " bytes=" + fileBuffer.byteLength);
+  try {
+    const fd = new FormData();
+    const blob = new Blob([fileBuffer], { type: stopRes.contentType || "audio/webm" });
+    fd.append("file", new File([blob], "audio.webm", { type: stopRes.contentType || "audio/webm" }));
+    fd.append("transcriptId", transcriptId);
+    fd.append("userId", state.userId);
+    fd.append("uploadToken", state.uploadToken);
+    fd.append("url", state.videoUrl || "");
+    fd.append("deductCredit", state.deductCredit ? "true" : "false");
+    fd.append("creditsReserved", String(state.creditsReserved || 0));
+    fd.append("partial", "true");
+
+    const upRes = await fetch(state.uploadEndpoint, { method: "POST", body: fd });
+    if (!upRes.ok) {
+      console.warn("[LecTranscribe bg] partial upload HTTP " + upRes.status + " id=" + transcriptId);
+      fetch(`${state.appUrl}/api/transcripts/${transcriptId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "failed" }),
+      }).catch(() => {});
+    } else {
+      console.log("[LecTranscribe bg] partial upload ok id=" + transcriptId);
+    }
+  } catch (e) {
+    console.warn("[LecTranscribe bg] partial upload threw:", e);
+    fetch(`${state.appUrl}/api/transcripts/${transcriptId}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "failed" }),
+    }).catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Recording state (per tab)
 // ---------------------------------------------------------------------------
@@ -274,24 +371,28 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       chrome.action.setBadgeText({ text: "", tabId }).catch(() => {});
     }
 
-    // If the tab that was being recorded navigated/refreshed, the captured
-    // MediaStream is now orphaned (its consumer content script is gone).
-    // Force-stop the offscreen recorder so Chrome releases the tabCapture
-    // indicator and future start-recording calls aren't blocked by an
-    // "active stream" conflict.
+    // Tab that was being recorded just navigated/reloaded. The captured
+    // MediaStream is about to be invalidated — but MediaRecorder has
+    // already buffered everything played up to this moment. Stop the
+    // recorder, grab those buffered chunks, and upload them with
+    // partial=true so the user gets a transcript covering whatever they
+    // played before the abandonment instead of a stuck 'processing' row.
     if (recordingState.has(tabId)) {
-      console.log("[LecTranscribe bg] recording tab navigated/reloaded — cleaning up");
-      forceCleanupRecording().catch(() => {});
+      console.log("[LecTranscribe bg] recording tab navigated/reloaded — uploading partial");
+      stopAndUploadPartial(tabId, "navigation").catch(() => {});
     }
   }
   // Fetch interceptor is now injected via manifest content_scripts (youtube-intercept.js)
 });
 
-// Tab closed while recording → same cleanup path
+// Tab closed while recording → try to recover whatever audio was buffered
+// before the close. MediaStream is dead the instant the tab goes away, but
+// MediaRecorder's chunk buffer is still in offscreen's memory until we tell
+// it to stop. Same partial-upload path as navigation.
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (recordingState.has(tabId)) {
-    console.log("[LecTranscribe bg] recording tab closed — cleaning up");
-    forceCleanupRecording().catch(() => {});
+    console.log("[LecTranscribe bg] recording tab closed — uploading partial");
+    stopAndUploadPartial(tabId, "tab_closed").catch(() => {});
   }
 });
 
@@ -419,13 +520,38 @@ chrome.action.onClicked.addListener(async (tab) => {
       } catch { /* non-JSON body, keep generic */ }
       throw new Error(msg);
     }
-    const tokenData = await tokenRes.json();
+    // Reuse the outer `tokenData` (declared as `let` above) so the catch
+    // handler at the bottom can see the transcriptId when recording start
+    // fails after the token was minted. Previously this was `const
+    // tokenData = ...`, which shadowed the outer variable and left the
+    // catch handler always seeing null — failed-after-token cases left
+    // their rows stuck at status='processing' until the reaper.
+    tokenData = await tokenRes.json();
 
     // Force cleanup any stale recording state before starting new one
     await forceCleanupRecording();
 
     // Start tab capture (must run synchronously in the action.onClicked handler)
     await startTabRecording(tab.id);
+
+    // Stash full upload context so the abandonment path
+    // (stopAndUploadPartial) can finalize and POST whatever audio was
+    // captured before the user navigated/closed the tab.
+    const existing = recordingState.get(tab.id) || {};
+    recordingState.set(tab.id, {
+      ...existing,
+      transcriptId: tokenData.transcriptId,
+      userId: tokenData.userId,
+      uploadEndpoint: tokenData.uploadEndpoint,
+      uploadToken: tokenData.uploadToken,
+      backendUrl: tokenData.backendUrl,
+      deductCredit: !!tokenData.deductCredit,
+      creditsReserved: tokenData.creditsReserved || 0,
+      videoUrl,
+      videoTitle: meta.title,
+      duration: meta.duration,
+      appUrl,
+    });
 
     // Tell content script: recording is on, wait for video to finish
     chrome.tabs.sendMessage(tab.id, {
@@ -493,6 +619,10 @@ async function startTabRecording(tabId) {
     throw new Error(startRes?.error || "Failed to start recording");
   }
 
+  // Caller (action.onClicked) attaches the upload context to the state
+  // entry right after this function returns so cleanup paths
+  // (stopAndUploadPartial, finalize on stop) can recover the transcript
+  // id without round-tripping through the content script.
   recordingState.set(tabId, { startedAt: Date.now() });
 
   // Keep the service worker alive during the long recording.
